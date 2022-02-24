@@ -16,12 +16,14 @@ limitations under the License.
 package cmd
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
 	"sort"
+	"time"
 )
 
 func do() error {
@@ -29,9 +31,7 @@ func do() error {
 	if err != nil {
 		return err
 	}
-
-	log.Printf(file)
-
+	parseFile(file)
 	return nil
 }
 
@@ -50,4 +50,26 @@ func findLatestMd() (string, error) {
 		return f, nil
 	}
 	return "", errors.New(fmt.Sprintf("Error: %s", "No such md exist."))
+}
+
+func parseFile(file string) error {
+	fp, err := os.Open(file)
+	if err != nil {
+		return err
+	}
+	defer fp.Close()
+
+	scanner := bufio.NewScanner(fp)
+	for scanner.Scan() {
+		log.Println(scanner.Text())
+	}
+	log.Printf(file)
+
+	log.Printf("%d", time.Now().Unix())
+
+	return nil
+}
+
+type TimeLog struct {
+	date string
 }
