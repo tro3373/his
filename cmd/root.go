@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"sort"
 
 	"github.com/spf13/cobra"
 
@@ -43,46 +42,13 @@ to quickly create a Cobra application.`,
 	// has an action associated with it:
 	Run: func(cmd *cobra.Command, args []string) {
 		log.Println("==> Start args:", args)
-		err := Do()
+		err := do()
 		if err != nil {
-			log.Printf("==> Failed to execute Do. Err:%+v\n", err)
+			log.Printf("==> Failed to execute do. Err:%+v\n", err)
 			return
 		}
-		log.Println("==> Success to execute Do!")
+		log.Println("==> Success to execute do!")
 	},
-}
-
-func Do() error {
-	userHomeDir, err := os.UserHomeDir()
-	if err != nil {
-		return err
-	}
-	srcDir := fmt.Sprintf("%s/works/00_memos", userHomeDir)
-	files, err := os.ReadDir(srcDir)
-	if err != nil {
-		return err
-	}
-	sort.Slice(files, func(i, j int) bool {
-		return files[i].Name() > files[j].Name()
-	})
-	for _, f := range files {
-		log.Printf("d: %s, f:%s\n", srcDir, f.Name())
-	}
-
-	// func useBufioScanner(fileName string) {
-	//     fp, err := os.Open(fileName)
-	//     if err != nil {
-	//         panic(err)
-	//     }
-	//     defer fp.Close()
-	//
-	//     scanner := bufio.NewScanner(fp)
-	//     for scanner.Scan() {
-	//         fmt.Println(scanner.Text())
-	//     }
-	// }
-
-	return nil
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.

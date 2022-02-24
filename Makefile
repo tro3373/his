@@ -17,17 +17,9 @@ COBRA := $(GOBIN)/cobra
 $(COBRA): ; @go get -v -u github.com/spf13/cobra/cobra
 
 .PHONY: get
+get:
 	@go get github.com/mitchellh/go-homedir \
 		go get github.com/spf13/viper
-
-# .PHONY: init-gen
-# init-gen: $(COBRA)
-# 	@go mod init $(PACKAGE) \
-# 	&& $(COBRA) init --pkg-name $(PACKAGE)
-#
-# .PHONY: add-hello
-# add-hello: $(COBRA)
-# 	@$(COBRA) add hello
 
 .PHONY: deps
 deps:
@@ -41,26 +33,13 @@ tidy:
 build:
 	@env GOOS=linux go build -ldflags="-s -w"
 
-# .PHONY: clean
-# clean:
-# 	rm -rf ./bin logs stress
+.PHONY: clean
+clean:
+	rm -rf ./$(NAME)
 
-#
-# .PHONY: help
-# help:
-# 	@go run ./main.go --help
-#
-# .PHONY: front
-# front:
-# 	@go run ./main.go front
-#
-# .PHONY: back
-# back:
-# 	@go run ./main.go back
-#
-# .PHONY: reguser
-# reguser:
-# 	@go run ./main.go reguser
+.PHONY: help
+help:
+	@go run ./main.go --help
 
 .PHONY: run
 run:
