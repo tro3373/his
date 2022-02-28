@@ -2,9 +2,8 @@ package cmd
 
 import (
 	"bufio"
-	"errors"
 	"fmt"
-	"log"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -13,55 +12,100 @@ import (
 	"time"
 )
 
-func do() error {
-	file, err := findLatestMd()
-	if err != nil {
-		return err
-	}
-	dateLogs, err := parseFile(file)
-	if err != nil {
-		return err
-	}
-	// log.Printf("%#+v", dateLogs)
-	// log.Printf("%#+v", dateLog)
+const MAX_LOAD_MD_FILES = 2
+const MAX_SHOW_SUMMARY = 15
 
-	for i := 0; i < len(dateLogs); i++ {
-		dl := dateLogs[i]
-		log.Printf("Date:%#+v", dl.Date)
+func do() error {
+	files, err := findRecentryMds()
+	if err != nil {
+		return err
+	}
+	dateLogs, err := collectFromFiles(files)
+	if err != nil {
+		return err
+	}
+
+	count := -1
+	for _, dl := range dateLogs {
+		count++
+		if count > MAX_SHOW_SUMMARY {
+			break
+		}
+		// log.Printf("Date: %s\n", dl.Date)
+		m := make(map[string]int64)
+		// factories = make(map[string]Factory)
+		tag := ""
+		prev := int64(0)
 		for _, tl := range dl.TimeLogs {
-			log.Printf("Start:%#+v", tl.Start)
-			log.Printf("Tag:%#+v", tl.Tag)
-			log.Printf("Title:%#+v", tl.Title)
+			// log.Printf("Start:%#+v", tl.Start)
+			// log.Printf("Tag:%#+v", tl.Tag)
+			// log.Printf("Title:%#+v", tl.Title)
+			if prev != 0 && tag != "" {
+				summary := m[tag]
+				summary += tl.Start - prev
+				m[tag] = summary
+			}
+			prev = tl.Start
+			tag = tl.Tag
+		}
+		// log.Printf("Summary:%#+v", m)
+		for tag, sec := range m {
+			// log.Printf("%s\t%s\t%.1fh\n", dl.Date, tag, float64((sec / 60 / 60)))
+			fmt.Printf("%s\t%s\t%.2fh\n", dl.Date, tag, float64((sec / 60 / 60)))
 		}
 	}
 	return nil
 }
 
-func findLatestMd() (string, error) {
+func findRecentryMds() ([]string, error) {
 	userHomeDir, err := os.UserHomeDir()
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	pattern := fmt.Sprintf("%s/works/00_memos/*月.md", userHomeDir)
 	files, err := filepath.Glob(pattern)
 	sort.Slice(files, func(i, j int) bool {
 		return files[i] > files[j]
 	})
-	for _, f := range files {
-		// log.Printf("f:%s\n", f)
-		return f, nil
-	}
-	return "", errors.New(fmt.Sprintf("Error: %s", "No such md exist."))
+	i := int64(math.Min(float64(len(files)), MAX_LOAD_MD_FILES))
+	return files[:i], nil
+	// list := []string{}
+	// for _, f := range files {
+	// 	list = append(list, f)
+	// 	// log.Printf("f:%s\n", f)
+	// 	// return f, nil
+	// 	if len(list) == 2 {
+	// 		break
+	// 	}
+	// }
+	// return list, nil
+	// return nil, errors.New(fmt.Sprintf("Error: %s", "No such md exist."))
 }
 
-func parseFile(file string) ([]*DateLog, error) {
+func collectFromFiles(files []string) ([]*DateLog, error) {
+
+	var allLogs = []*DateLog{}
+	for _, file := range files {
+		dateLogs, err := collectFromFile(file)
+		if err != nil {
+			return nil, err
+		}
+		allLogs = append(allLogs, dateLogs...)
+	}
+	sort.Slice(allLogs, func(i, j int) bool {
+		return allLogs[i].Date > allLogs[j].Date
+	})
+	return allLogs, nil
+}
+
+func collectFromFile(file string) ([]*DateLog, error) {
 	fp, err := os.Open(file)
 	if err != nil {
 		return nil, err
 	}
 	defer fp.Close()
 
-	log.Printf("> %s\n", file)
+	// log.Printf("> %s\n", file)
 	// log.Printf("%d", time.Now().Unix())
 
 	var dateLogs = []*DateLog{}
@@ -74,7 +118,7 @@ func parseFile(file string) ([]*DateLog, error) {
 		if !regStartDate.MatchString(line) && !regStartDate.MatchString(line) {
 			continue
 		}
-		log.Println(line)
+		// log.Println(line)
 		if strings.HasPrefix(line, "# ") {
 			dateLog = NewDateLog(line)
 			dateLogs = append(dateLogs, dateLog)
@@ -83,7 +127,6 @@ func parseFile(file string) ([]*DateLog, error) {
 		timeLog := NewTimeLog(line)
 		dateLog.TimeLogs = append(dateLog.TimeLogs, timeLog)
 	}
-
 	return dateLogs, nil
 }
 

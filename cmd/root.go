@@ -26,13 +26,13 @@ to quickly create a Cobra application.`,
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
 	Run: func(cmd *cobra.Command, args []string) {
-		log.Println("==> Start args:", args)
+		// log.Println("==> Start args:", args)
 		err := do()
 		if err != nil {
 			log.Printf("==> Failed to execute do. Err:%+v\n", err)
 			return
 		}
-		log.Println("==> Success to execute do!")
+		// log.Println("==> Success to execute do!")
 	},
 }
 
