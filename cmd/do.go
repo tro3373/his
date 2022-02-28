@@ -18,7 +18,22 @@ func do() error {
 	if err != nil {
 		return err
 	}
-	parseFile(file)
+	dateLogs, err := parseFile(file)
+	if err != nil {
+		return err
+	}
+	// log.Printf("%#+v", dateLogs)
+	// log.Printf("%#+v", dateLog)
+
+	for i := 0; i < len(dateLogs); i++ {
+		dl := dateLogs[i]
+		log.Printf("Date:%#+v", dl.Date)
+		for _, tl := range dl.TimeLogs {
+			log.Printf("Start:%#+v", tl.Start)
+			log.Printf("Tag:%#+v", tl.Tag)
+			log.Printf("Title:%#+v", tl.Title)
+		}
+	}
 	return nil
 }
 
@@ -39,18 +54,18 @@ func findLatestMd() (string, error) {
 	return "", errors.New(fmt.Sprintf("Error: %s", "No such md exist."))
 }
 
-func parseFile(file string) error {
+func parseFile(file string) ([]*DateLog, error) {
 	fp, err := os.Open(file)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer fp.Close()
 
 	log.Printf("> %s\n", file)
 	// log.Printf("%d", time.Now().Unix())
 
-	var dateLogs = []DateLog{}
-	var dateLog DateLog
+	var dateLogs = []*DateLog{}
+	var dateLog *DateLog
 
 	scanner := bufio.NewScanner(fp)
 	for scanner.Scan() {
@@ -68,23 +83,21 @@ func parseFile(file string) error {
 		timeLog := NewTimeLog(line)
 		dateLog.TimeLogs = append(dateLog.TimeLogs, timeLog)
 	}
-	log.Printf("%#+v", dateLogs)
-	log.Printf("%#+v", dateLog)
 
-	return nil
+	return dateLogs, nil
 }
 
 type DateLog struct {
 	Date     string
-	TimeLogs []TimeLog
+	TimeLogs []*TimeLog
 }
 
-func NewDateLog(line string) DateLog {
+func NewDateLog(line string) *DateLog {
 	//# 2022-02-21
 	date := line[2:]
-	return DateLog{
+	return &DateLog{
 		date,
-		[]TimeLog{},
+		[]*TimeLog{},
 	}
 }
 
@@ -94,7 +107,7 @@ type TimeLog struct {
 	Title string
 }
 
-func NewTimeLog(line string) TimeLog {
+func NewTimeLog(line string) *TimeLog {
 	//12345678901234567890123456789
 	//- 20220221_100000 COM hoge
 	start := line[2:17]
@@ -106,7 +119,7 @@ func NewTimeLog(line string) TimeLog {
 		count := len(start) + len(tag) + 4
 		title = line[count:]
 	}
-	return TimeLog{
+	return &TimeLog{
 		startTime.Unix(),
 		tag,
 		title,
