@@ -33,6 +33,10 @@ tidy:
 build:
 	@env GOOS=linux go build -ldflags="-s -w"
 
+.PHONY: install
+install:
+	@go install
+
 .PHONY: clean
 clean:
 	rm -rf ./$(NAME)
