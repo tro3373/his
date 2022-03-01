@@ -37,13 +37,13 @@ func do() error {
 		tag := ""
 		prev := int64(0)
 		for _, tl := range dl.TimeLogs {
-			// log.Printf("Start:%#+v", tl.Start)
-			// log.Printf("Tag:%#+v", tl.Tag)
-			// log.Printf("Title:%#+v", tl.Title)
 			if prev != 0 && tag != "" {
 				summary := m[tag]
-				summary += tl.Start - prev
+				add := tl.Start - prev
+				summary += add
 				m[tag] = summary
+				// log.Printf("  Tag:%4s Add:%5d Sum:%6d Sta:%d End:%d Title:%s",
+				// 	tag, add, summary, prev, tl.Start, tl.Title)
 			}
 			prev = tl.Start
 			tag = tl.Tag
@@ -51,7 +51,12 @@ func do() error {
 		// log.Printf("Summary:%#+v", m)
 		for tag, sec := range m {
 			// log.Printf("%s\t%s\t%.1fh\n", dl.Date, tag, float64((sec / 60 / 60)))
-			fmt.Printf("%s\t%s\t%.2fh\n", dl.Date, tag, float64((sec / 60 / 60)))
+			fmt.Printf("%s\t%s\t%.2fh\t(%3.0fm)\n",
+				dl.Date,
+				tag,
+				float64((float64(sec/60) / 60)),
+				float64(sec/60),
+			)
 		}
 	}
 	return nil
@@ -153,14 +158,24 @@ type TimeLog struct {
 func NewTimeLog(line string) *TimeLog {
 	//12345678901234567890123456789
 	//- 20220221_100000 COM hoge
-	start := line[2:17]
-	startTime, _ := time.Parse("20060102_150405", start)
+	timeLogPrefix := "- "
+	timeFormat := "20060102_150405"
+	posTimeS := len(timeLogPrefix)
+	posTimeE := posTimeS + len(timeFormat)
+	startStr := line[posTimeS:posTimeE] // YYYYMMDD_hhmmss
+	startTime, _ := time.Parse(timeFormat, startStr)
 	var tag string
 	var title string
-	if len(line) > 18 {
-		tag = strings.Split(line[18:], " ")[0]
-		count := len(start) + len(tag) + 4
-		title = line[count:]
+	posTagS := posTimeE + 1
+	if len(line) > posTagS {
+		// log.Printf("> line:%s\n", line)
+		// log.Printf("> line.len:%d\n", len(line))
+		tag = strings.Split(line[posTagS:], " ")[0]
+		// count := len(startStr) + len(tag) + 4
+		posTitleS := posTagS + len(tag) + 1
+		if len(line) > posTitleS {
+			title = line[posTitleS:]
+		}
 	}
 	return &TimeLog{
 		startTime.Unix(),
