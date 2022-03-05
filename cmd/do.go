@@ -13,7 +13,7 @@ import (
 )
 
 const MAX_LOAD_MD_FILES = 2
-const MAX_SHOW_SUMMARY = 15
+const MAX_SHOW_SUMMARY = 10
 
 func do() error {
 	files, err := findRecentryMds()
@@ -50,12 +50,13 @@ func do() error {
 		}
 		// log.Printf("Summary:%#+v", m)
 		for tag, sec := range m {
-			// log.Printf("%s\t%s\t%.1fh\n", dl.Date, tag, float64((sec / 60 / 60)))
-			fmt.Printf("%s\t%s\t%.2fh\t(%3.0fm)\n",
+			fmt.Printf("%s\t%s\t%3.0fm\t%02dh%02dm(+%02ds)\n",
 				dl.Date,
 				tag,
-				float64((float64(sec/60) / 60)),
 				float64(sec/60),
+				sec/60/60,
+				sec/60%60,
+				sec%60,
 			)
 		}
 	}
