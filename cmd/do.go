@@ -15,12 +15,8 @@ import (
 const MAX_LOAD_MD_FILES = 2
 const MAX_SHOW_SUMMARY = 10
 
-func do() error {
-	files, err := findRecentryMds()
-	if err != nil {
-		return err
-	}
-	dateLogs, err := collectFromFiles(files)
+func latest10() error {
+	dateLogs, err := getDateLogs(MAX_LOAD_MD_FILES)
 	if err != nil {
 		return err
 	}
@@ -63,7 +59,15 @@ func do() error {
 	return nil
 }
 
-func findRecentryMds() ([]string, error) {
+func getDateLogs(maxLoadMdFiles float64) ([]*DateLog, error) {
+	files, err := findRecentryMds(maxLoadMdFiles)
+	if err != nil {
+		return nil, err
+	}
+	return collectFromFiles(files)
+}
+
+func findRecentryMds(maxLoadMdFiles float64) ([]string, error) {
 	userHomeDir, err := os.UserHomeDir()
 	if err != nil {
 		return nil, err
@@ -73,7 +77,7 @@ func findRecentryMds() ([]string, error) {
 	sort.Slice(files, func(i, j int) bool {
 		return files[i] > files[j]
 	})
-	i := int64(math.Min(float64(len(files)), MAX_LOAD_MD_FILES))
+	i := int64(math.Min(float64(len(files)), maxLoadMdFiles))
 	return files[:i], nil
 	// list := []string{}
 	// for _, f := range files {
