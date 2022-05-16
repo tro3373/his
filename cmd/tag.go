@@ -77,7 +77,7 @@ func tag(args []string) error {
 func parseTagArgs(args []string) (string, int) {
 	// default
 	tag := ""
-	count := 1
+	count := 14
 
 	if len(args) == 0 {
 		return tag, count
