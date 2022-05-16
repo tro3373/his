@@ -43,8 +43,8 @@ clean:
 
 .PHONY: help
 help:
-	@go run ./main.go --help
+	@go run . --help
 
 .PHONY: run
 run:
-	@go run ./main.go latest
+	@go run . latest 2
