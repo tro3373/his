@@ -2,9 +2,7 @@ package cmd
 
 import (
 	"fmt"
-	"log"
 	"os"
-	"strconv"
 
 	"github.com/spf13/cobra"
 
@@ -27,8 +25,8 @@ to quickly create a Cobra application.`,
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := runInner(cmd, args); err != nil {
-			log.Fatalf("==> Err:%+v\n", err)
+		if len(args) == 0 {
+			latestCmd.Run(cmd, args)
 		}
 	},
 }
@@ -83,82 +81,4 @@ func initConfig() {
 	if err := viper.ReadInConfig(); err == nil {
 		fmt.Println("Using config file:", viper.ConfigFileUsed())
 	}
-}
-func runInner(cmd *cobra.Command, args []string) error {
-	tag, err := cmd.Flags().GetString("tag")
-	if err != nil {
-		return err
-	}
-	detail, err := cmd.Flags().GetBool("detail")
-	if err != nil {
-		return err
-	}
-	fmt.Println("tag, detail, args==>", tag, detail, args)
-
-	// if len(args) == 0 {
-	// 	latestCmd.Run(cmd, args)
-	// }
-	tag, outputCount, err := parseArgs(args)
-	if err != nil {
-		return err
-	}
-	fmt.Printf("tag==>%#+v\n", tag)
-	if true {
-		// TODO
-		return err
-	}
-
-	dateLogs, err := getDateLogs(2) // always load 2 file
-	if err != nil {
-		return err
-	}
-
-	count := 0
-	for _, dateLog := range dateLogs {
-		count++
-		if count > outputCount {
-			break
-		}
-		if detail {
-			dumpDetail(dateLog)
-			continue
-		}
-		dumpSummary(dateLog)
-	}
-	return nil
-}
-
-func parseArgs(args []string) (string, int, error) {
-	// errSpecifyTag := errors.Errorf("Error: %s", "Specify tag name")
-	var errSpecifyTag error
-	if len(args) == 0 {
-		return "", 0, errSpecifyTag
-	}
-
-	tag := ""
-	count := 1
-	for idx, arg := range args {
-		log.Printf("==> parseArgs: %d:%s\n", idx, arg)
-		tmp, err := strconv.Atoi(arg)
-		if err == nil {
-			count = tmp
-			continue
-		}
-		tag = arg
-	}
-	if len(tag) == 0 {
-		return tag, count, errSpecifyTag
-	}
-
-	return tag, count, nil
-}
-
-func dumpSummary(dateLog *DateLog) {
-	m := summaryTag(dateLog.TimeLogs)
-	dumpSummaryTag(dateLog.Date, m)
-}
-
-func dumpDetail(dateLog *DateLog) {
-	m := summaryTag(dateLog.TimeLogs)
-	dumpSummaryTag(dateLog.Date, m)
 }

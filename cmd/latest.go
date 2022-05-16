@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"log"
 	"strconv"
 
@@ -49,19 +50,33 @@ func latest(args []string) error {
 		}
 	}
 
-	dateLogs, err := getDateLogs(2) // always load 2 file
+	dateLogs, err := collectDateLogs(2) // always load 2 file
 	if err != nil {
 		return err
 	}
 
 	count := 0
-	for _, dl := range dateLogs {
+	for _, dateLog := range dateLogs {
 		count++
 		if count > outputCount {
 			break
 		}
-		m := summaryTag(dl.TimeLogs)
-		dumpSummaryTag(dl.Date, m)
+		// for _, timeLog := range dateLog.TimeLogs {
+		// 	fmt.Println("@@@", timeLog.Tag, timeLog.Title, timeLog.Start, timeLog.Summary)
+		// }
+
+		timeLogs := summaryTimeLog(dateLog.TimeLogs, false)
+		for _, timeLog := range timeLogs {
+			if len(timeLog.Tag) == 0 {
+				continue
+			}
+			fmt.Printf(
+				"%s\t%s\t%s\n",
+				dateLog.Date,
+				timeLog.SummaryTimeString(),
+				timeLog.Tag,
+			)
+		}
 	}
 	return nil
 }

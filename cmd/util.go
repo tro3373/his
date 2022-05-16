@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-func getDateLogs(maxLoadMdFiles float64) ([]*DateLog, error) {
+func collectDateLogs(maxLoadMdFiles float64) ([]*DateLog, error) {
 	files, err := findRecentryMds(maxLoadMdFiles)
 	if err != nil {
 		return nil, err
@@ -32,17 +32,6 @@ func findRecentryMds(maxLoadMdFiles float64) ([]string, error) {
 	})
 	i := int64(math.Min(float64(len(files)), maxLoadMdFiles))
 	return files[:i], nil
-	// list := []string{}
-	// for _, f := range files {
-	// 	list = append(list, f)
-	// 	// log.Printf("f:%s\n", f)
-	// 	// return f, nil
-	// 	if len(list) == 2 {
-	// 		break
-	// 	}
-	// }
-	// return list, nil
-	// return nil, errors.New(fmt.Sprintf("Error: %s", "No such md exist."))
 }
 
 func collectFromFiles(files []string) ([]*DateLog, error) {
@@ -73,16 +62,16 @@ func collectFromFile(file string) ([]*DateLog, error) {
 
 	var dateLogs = []*DateLog{}
 	var dateLog *DateLog
+	regStartDate := regexp.MustCompile(`^[#-] \d{4}`)
 
 	scanner := bufio.NewScanner(fp)
 	var prevTimeLog *TimeLog
 	for scanner.Scan() {
 		line := scanner.Text()
-		regStartDate := regexp.MustCompile(`^[#-] \d{4}`)
-		if !regStartDate.MatchString(line) && !regStartDate.MatchString(line) {
+		if !regStartDate.MatchString(line) {
 			continue
 		}
-		// log.Println(line)
+		// log.Println("####", line)
 		if strings.HasPrefix(line, "# ") {
 			dateLog = NewDateLog(line)
 			dateLogs = append(dateLogs, dateLog)
@@ -90,6 +79,7 @@ func collectFromFile(file string) ([]*DateLog, error) {
 			continue
 		}
 		timeLog, err := NewTimeLog(line, prevTimeLog)
+		// log.Println("######", timeLog.SummaryTimeString())
 		if err != nil {
 			return nil, err
 		}
@@ -127,12 +117,13 @@ func NewTimeLog(line string, prev *TimeLog) (*TimeLog, error) {
 		return &tl, err
 	}
 	if prev != nil {
-		tl.Summary = tl.Start - prev.Start
+		prev.Summary = tl.Start - prev.Start
 	}
 	return &tl, nil
 }
 
 func (t *TimeLog) parse(line string) error {
+	// fmt.Printf("==> Parsing line: %s\n", line)
 	//12345678901234567890123456789
 	//- 20220221_100000 COM hoge
 	parts := strings.Split(line, " ")
@@ -143,104 +134,28 @@ func (t *TimeLog) parse(line string) error {
 		return err
 	}
 	t.Start = startTime.Unix()
-	t.Tag = parts[2]
-	t.Title = strings.Join(parts[3:], " ")
+	if len(parts) > 2 {
+		t.Tag = parts[2]
+		if len(parts) > 3 {
+			t.Title = strings.Join(parts[3:], " ")
+		}
+	}
 	return nil
 }
 
 func (t *TimeLog) SummaryTimeString() string {
 	sec := t.Summary
-	return fmt.Sprintf("%3.0fm\t%02dh%02dm(+%02ds)",
-		float64(sec/60),
+	// return fmt.Sprintf("%3.0fm\t%02dh%02dm(+%02ds)",
+	// 	float64(sec/60),
+	// 	sec/60/60,
+	// 	sec/60%60,
+	// 	sec%60,
+	// )
+	return fmt.Sprintf("%02dh%02dm(+%02ds)",
 		sec/60/60,
 		sec/60%60,
 		sec%60,
 	)
-}
-
-// type TitleSummary struct {
-// 	Tag     string
-// 	Title   string
-// 	Summary int64
-// }
-//
-// func NewTimeLog(line string) (*TimeLog, error) {
-// 	// timeLogPrefix := "- "
-// 	// timeFormat := "20060102_150405"
-// 	// posTimeS := len(timeLogPrefix)
-// 	// posTimeE := posTimeS + len(timeFormat)
-// 	// startStr := line[posTimeS:posTimeE] // YYYYMMDD_hhmmss
-// 	// startTime, _ := time.Parse(timeFormat, startStr)
-// 	startTime, err := paseTimeLog2Unix(line)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-//
-// 	var tag string
-// 	var title string
-// 	posTagS := posTimeE + 1
-// 	if len(line) > posTagS {
-// 		// log.Printf("> line:%s\n", line)
-// 		// log.Printf("> line.len:%d\n", len(line))
-// 		tag = strings.Split(line[posTagS:], " ")[0]
-// 		// count := len(startStr) + len(tag) + 4
-// 		posTitleS := posTagS + len(tag) + 1
-// 		if len(line) > posTitleS {
-// 			title = line[posTitleS:]
-// 		}
-// 	}
-// 	return &TimeLog{
-// 		tag,
-// 		title,
-// 		startTime,
-// 	}
-// }
-
-// func paseTimeLog2Unix(line string) (int64, error) {
-// 	//12345678901234567890123456789
-// 	//- 20220221_100000 COM hoge
-// 	timeLogPrefix := "- "
-// 	timeFormat := "20060102_150405"
-// 	posTimeS := len(timeLogPrefix)
-// 	posTimeE := posTimeS + len(timeFormat)
-// 	startStr := line[posTimeS:posTimeE] // YYYYMMDD_hhmmss
-// 	startTime, err := time.Parse(timeFormat, startStr)
-// 	if err != nil {
-// 		return -1, err
-// 	}
-// 	return startTime.Unix(), nil
-// }
-
-func summaryTag(timeLogs []*TimeLog) map[string]int64 {
-	m := make(map[string]int64)
-	// factories = make(map[string]Factory)
-	tag := ""
-	prev := int64(0)
-	for _, tl := range timeLogs {
-		if prev != 0 && tag != "" {
-			summary := m[tag]
-			add := tl.Start - prev
-			summary += add
-			m[tag] = summary
-			// log.Printf("  Tag:%4s Add:%5d Sum:%6d Sta:%d End:%d Title:%s",
-			// 	tag, add, summary, prev, tl.Start, tl.Title)
-		}
-		prev = tl.Start
-		tag = tl.Tag
-	}
-	return m
-}
-func dumpSummaryTag(d string, m map[string]int64) {
-	for tag, sec := range m {
-		fmt.Printf("%s\t%s\t%3.0fm\t%02dh%02dm(+%02ds)\n",
-			d,
-			tag,
-			float64(sec/60),
-			sec/60/60,
-			sec/60%60,
-			sec%60,
-		)
-	}
 }
 
 func summaryTimeLog(timeLogs []*TimeLog, titleSummary bool) []*TimeLog {
@@ -265,39 +180,4 @@ func summaryTimeLog(timeLogs []*TimeLog, titleSummary bool) []*TimeLog {
 		summaries = append(summaries, value)
 	}
 	return summaries
-	// findSummary := func(summaries []*TitleSummary, tag, title string) *TitleSummary {
-	// 	for _, summary := range summaries {
-	// 		if summary.Tag == tag && summary.Title == title {
-	// 			return summary
-	// 		}
-	// 	}
-	// 	return nil
-	// }
-	// for _, timeLog := range timeLogs {
-	// 	summary := findSummary(summaries, timeLog.Tag, timeLog.Title)
-	// 	if summary == nil {
-	// 		summary = &TitleSummary{}
-	// 	}
-	// 	summary.Tag = timeLog.Tag
-	// 	summary.Title = timeLog.Title
-	// 	summary.Summary += timeLog.Title
-	// }
-	// // sum := findSummary(summaries, "tag", "title")
-	// return summaries
-	// m := make(map[string]int64)
-	// tag := ""
-	// prev := int64(0)
-	// for _, tl := range timeLogs {
-	// 	if prev != 0 && tag != "" {
-	// 		summary := m[tag]
-	// 		add := tl.Start - prev
-	// 		summary += add
-	// 		m[tag] = summary
-	// 		// log.Printf("  Tag:%4s Add:%5d Sum:%6d Sta:%d End:%d Title:%s",
-	// 		// 	tag, add, summary, prev, tl.Start, tl.Title)
-	// 	}
-	// 	prev = tl.Start
-	// 	tag = tl.Tag
-	// }
-	// return m
 }

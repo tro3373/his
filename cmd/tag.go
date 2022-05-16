@@ -5,7 +5,6 @@ import (
 	"log"
 	"strconv"
 
-	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 )
 
@@ -42,37 +41,48 @@ func init() {
 
 func tag(args []string) error {
 
-	tag, outputCount, err := parseTagArgs(args)
-	if err != nil {
-		return err
-	}
-	fmt.Printf("%#+v\n", tag)
+	tag, outputCount := parseTagArgs(args)
 
-	dateLogs, err := getDateLogs(2) // always load 2 file
+	dateLogs, err := collectDateLogs(2) // always load 2 file
 	if err != nil {
 		return err
 	}
 
 	count := 0
-	for _, dl := range dateLogs {
+	for _, dateLog := range dateLogs {
 		count++
 		if count > outputCount {
 			break
 		}
-		m := summaryTag(dl.TimeLogs)
-		dumpSummaryTag(dl.Date, m)
+		timeLogs := summaryTimeLog(dateLog.TimeLogs, true)
+		for _, timeLog := range timeLogs {
+			if len(timeLog.Tag) == 0 {
+				continue
+			}
+			if len(tag) != 0 && tag != timeLog.Tag {
+				continue
+			}
+			fmt.Printf(
+				"%s\t%s\t%s\t%s\n",
+				dateLog.Date,
+				timeLog.SummaryTimeString(),
+				timeLog.Tag,
+				timeLog.Title,
+			)
+		}
 	}
 	return nil
 }
 
-func parseTagArgs(args []string) (string, int, error) {
-	errSpecifyTag := errors.Errorf("Error: %s", "Specify tag name")
-	if len(args) == 0 {
-		return "", 0, errSpecifyTag
-	}
-
+func parseTagArgs(args []string) (string, int) {
+	// default
 	tag := ""
 	count := 1
+
+	if len(args) == 0 {
+		return tag, count
+	}
+
 	for _, arg := range args {
 		tmp, err := strconv.Atoi(arg)
 		if err == nil {
@@ -81,9 +91,5 @@ func parseTagArgs(args []string) (string, int, error) {
 		}
 		tag = arg
 	}
-	if len(tag) == 0 {
-		return tag, count, errSpecifyTag
-	}
-
-	return tag, count, nil
+	return tag, count
 }

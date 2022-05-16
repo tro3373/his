@@ -47,4 +47,12 @@ help:
 
 .PHONY: run
 run:
-	@go run . latest 2
+	@go run . $(arg)
+
+.PHONY: latest
+latest:
+	@go run . latest $(arg)
+
+.PHONY: tag
+tag:
+	@go run . tag $(arg)
