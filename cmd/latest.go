@@ -55,28 +55,27 @@ func latest(args []string) error {
 		return err
 	}
 
+	var timeLogs []*TimeLog
 	count := 0
 	for _, dateLog := range dateLogs {
 		count++
 		if count > outputCount {
 			break
 		}
-		// for _, timeLog := range dateLog.TimeLogs {
-		// 	fmt.Println("@@@", timeLog.Tag, timeLog.Title, timeLog.Start, timeLog.Summary)
-		// }
+		timeLogs = append(timeLogs, dateLog.TimeLogs...)
+	}
 
-		timeLogs := summaryTimeLog(dateLog.TimeLogs, false)
-		for _, timeLog := range timeLogs {
-			if len(timeLog.Tag) == 0 {
-				continue
-			}
-			fmt.Printf(
-				"%s\t%s\t%s\n",
-				dateLog.Date,
-				timeLog.SummaryTimeString(),
-				timeLog.Tag,
-			)
+	summaryTimeLogs := summaryTimeLog(timeLogs, false)
+	for _, timeLog := range summaryTimeLogs {
+		if len(timeLog.Tag) == 0 {
+			continue
 		}
+		fmt.Printf(
+			"%s\t%s\t%s\n",
+			timeLog.Date,
+			SummaryTimeString(timeLog.Summary),
+			timeLog.Tag,
+		)
 	}
 	return nil
 }

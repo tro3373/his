@@ -48,28 +48,31 @@ func tag(args []string) error {
 		return err
 	}
 
+	var timeLogs []*TimeLog
 	count := 0
 	for _, dateLog := range dateLogs {
 		count++
 		if count > outputCount {
 			break
 		}
-		timeLogs := summaryTimeLog(dateLog.TimeLogs, true)
-		for _, timeLog := range timeLogs {
-			if len(timeLog.Tag) == 0 {
-				continue
-			}
-			if len(tag) != 0 && tag != timeLog.Tag {
-				continue
-			}
-			fmt.Printf(
-				"%s\t%s\t%s\t%s\n",
-				dateLog.Date,
-				timeLog.SummaryTimeString(),
-				timeLog.Tag,
-				timeLog.Title,
-			)
+		timeLogs = append(timeLogs, dateLog.TimeLogs...)
+	}
+
+	summaryTimeLogs := summaryTimeLog(timeLogs, true)
+	for _, timeLog := range summaryTimeLogs {
+		if len(timeLog.Tag) == 0 {
+			continue
 		}
+		if len(tag) != 0 && tag != timeLog.Tag {
+			continue
+		}
+		fmt.Printf(
+			"%s\t%s\t%s\t%s\n",
+			timeLog.Date,
+			SummaryTimeString(timeLog.Summary),
+			timeLog.Tag,
+			timeLog.Title,
+		)
 	}
 	return nil
 }

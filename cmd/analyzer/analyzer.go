@@ -1,4 +1,4 @@
-package cmd
+package analyzer
 
 import (
 	"bufio"
@@ -111,18 +111,6 @@ type TimeLog struct {
 	Summary int64
 }
 
-func NewTimeLog(line string, prev *TimeLog) (*TimeLog, error) {
-	tl := TimeLog{}
-	err := tl.parse(line)
-	if err != nil {
-		return &tl, err
-	}
-	if prev != nil {
-		prev.Summary = tl.Start - prev.Start
-	}
-	return &tl, nil
-}
-
 func (t *TimeLog) parse(line string) error {
 	// fmt.Printf("==> Parsing line: %s\n", line)
 	//12345678901234567890123456789
@@ -142,6 +130,35 @@ func (t *TimeLog) parse(line string) error {
 		}
 	}
 	return nil
+}
+
+func NewTimeLog(line string, prev *TimeLog) (*TimeLog, error) {
+	tl := TimeLog{}
+	err := tl.parse(line)
+	if err != nil {
+		return &tl, err
+	}
+	if prev != nil {
+		prev.Summary = tl.Start - prev.Start
+	}
+	return &tl, nil
+}
+
+type Summaries struct {
+	List []summary
+}
+
+type summary struct {
+	key string
+	sum int64
+}
+
+func NewSummary() *Summaries {
+	return &Summaries{}
+}
+
+func (s *Summaries) Add(tag, title string, sum int64) {
+
 }
 
 func SummaryTimeString(sec int64) string {
