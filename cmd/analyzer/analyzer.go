@@ -29,9 +29,7 @@ func Analyze(filePathPattern string, maxLoadFile int32) (*Result, error) {
 		return nil, err
 	}
 	logs := parseFiles(files)
-	result := NewResult(logs)
-	// fmt.Println("collectDateLogs:", dateLogs, err)
-	return result, nil
+	return NewResult(logs)
 }
 
 func findRecentryFiles(filePathPattern string, maxLoadFile int32) ([]string, error) {
@@ -59,7 +57,14 @@ func parseFiles(files []string) []*TimeLog {
 		logs = append(logs, timeLogs...)
 	}
 	sort.Slice(logs, func(i, j int) bool {
-		return logs[i].Date > logs[j].Date
+		id := logs[i].Date
+		jd := logs[j].Date
+		if id != jd {
+			return logs[i].Date > logs[j].Date
+		}
+		is := logs[i].Start
+		js := logs[j].Start
+		return is > js
 	})
 	return logs
 }
@@ -160,58 +165,97 @@ func (t *TimeLog) Valid() bool {
 }
 
 type Result struct {
-	TimeLogs []*TimeLog
+	SummaryLogs []*SummaryLog
 }
 
-func NewResult(logs []*TimeLog) *Result {
-	return &Result{logs}
+func NewResult(timeLogs []*TimeLog) (*Result, error) {
+	var sls []*SummaryLog
+	findOrNewSummaryLog := func(tl *TimeLog) *SummaryLog {
+		for _, sl := range sls {
+			if sl.isTarget(tl) {
+				return sl
+			}
+		}
+		sl := &SummaryLog{}
+		sls = append(sls, sl)
+		return sl
+	}
+	for _, tl := range timeLogs {
+		sl := findOrNewSummaryLog(tl)
+		sl.Append(tl)
+	}
+	return &Result{sls}, nil
 }
 
-// type Summaries struct {
-// 	List []summary
-// }
-//
-// type summary struct {
-// 	key string
-// 	sum int64
-// }
-//
-// func NewSummary() *Summaries {
-// 	return &Summaries{}
-// }
-//
-// func (s *Summaries) Add(tag, title string, sum int64) {
-//
-// }
-//
-// func SummaryTimeString(sec int64) string {
-// 	return fmt.Sprintf("%02dh%02dm(+%02ds)",
-// 		sec/60/60,
-// 		sec/60%60,
-// 		sec%60,
-// 	)
-// }
-//
-// func summaryTimeLog(timeLogs []*TimeLog, titleSummary bool) []*TimeLog {
-// 	summaryMap := make(map[string]*TimeLog)
-// 	for _, tl := range timeLogs {
-// 		key := tl.Tag
-// 		if titleSummary {
-// 			key = fmt.Sprintf("%s-%s", tl.Tag, tl.Title)
-// 		}
-// 		summaryTl := summaryMap[key]
-// 		if summaryTl == nil {
-// 			summaryTl = &TimeLog{Tag: tl.Tag, Start: tl.Start, Summary: 0}
-// 			if titleSummary {
-// 				summaryTl.Title = tl.Title
-// 			}
-// 			summaryMap[key] = summaryTl
-// 		}
-// 		summaryTl.Summary += tl.Summary
-// 	}
-// 	summaries := []*TimeLog{}
-// 	for _, value := range summaryMap {
-// 		summaries = append(summaries, value)
-// 	}
-// 	return summaries
-// }
+func (r *Result) PrintTagResult(maxPrintDateCount int) {
+	r.printResultHandler(maxPrintDateCount, func(s *SummaryLog) {
+		s.PrintTagFormatSummary()
+	})
+}
+
+func (r *Result) PrintTagTitleResult(tag string, maxPrintDateCount int) {
+	r.printResultHandler(maxPrintDateCount, func(s *SummaryLog) {
+		if len(tag) != 0 && tag != s.Tag {
+			return
+		}
+		s.PrintTagTitleFormatSummary()
+	})
+}
+
+func (r *Result) printResultHandler(maxPrintDateCount int, fn func(s *SummaryLog)) {
+	count := 0
+	prevDate := ""
+	for _, s := range r.SummaryLogs {
+		if prevDate != s.Date {
+			count++
+			if count > maxPrintDateCount {
+				return
+			}
+			prevDate = s.Date
+		}
+		fn(s)
+	}
+}
+
+type SummaryLog struct {
+	Date  string
+	Sec   int64
+	Tag   string
+	Title string
+}
+
+func (s *SummaryLog) isTarget(t *TimeLog) bool {
+	return s.Date == t.Date && s.Tag == t.Tag && s.Title == t.Title
+}
+
+func (s *SummaryLog) Append(t *TimeLog) {
+	s.Sec = s.Sec + t.Summary
+}
+
+func (s *SummaryLog) HumanTimeString() string {
+	sec := s.Sec
+	return fmt.Sprintf("%02dh%02dm(+%02ds)",
+		sec/60/60,
+		sec/60%60,
+		sec%60,
+	)
+}
+
+func (s *SummaryLog) PrintTagTitleFormatSummary() {
+	fmt.Printf(
+		"%s\t%s\t%s\t%s\n",
+		s.Date,
+		s.HumanTimeString(),
+		s.Tag,
+		s.Title,
+	)
+}
+
+func (s *SummaryLog) PrintTagFormatSummary() {
+	fmt.Printf(
+		"%s\t%s\t%s\n",
+		s.Date,
+		s.HumanTimeString(),
+		s.Tag,
+	)
+}
