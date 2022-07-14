@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"math"
 	"os"
@@ -134,7 +135,9 @@ func (t *TimeLog) parse(line string) error {
 	if err != nil {
 		return err
 	}
-	t.Start = startTime.Unix()
+	sec := startTime.Unix()
+	t.Start = sec
+	t.Date = time.Unix(sec, 0).Format("2006-01-02")
 	if len(parts) > 2 {
 		t.Tag = parts[2]
 		if len(parts) > 3 {
@@ -161,7 +164,7 @@ func summaryTimeLog(timeLogs []*TimeLog, titleSummary bool) []*TimeLog {
 		}
 		summaryTl := summaryMap[key]
 		if summaryTl == nil {
-			summaryTl = &TimeLog{Tag: tl.Tag, Start: tl.Start, Summary: 0}
+			summaryTl = &TimeLog{Date: tl.Date, Tag: tl.Tag, Start: tl.Start, Summary: 0}
 			if titleSummary {
 				summaryTl.Title = tl.Title
 			}
@@ -174,4 +177,16 @@ func summaryTimeLog(timeLogs []*TimeLog, titleSummary bool) []*TimeLog {
 		summaries = append(summaries, value)
 	}
 	return summaries
+}
+
+func deepcopy(src interface{}, dst interface{}) (err error) {
+	b, err := json.Marshal(src)
+	if err != nil {
+		return err
+	}
+	err = json.Unmarshal(b, dst)
+	if err != nil {
+		return err
+	}
+	return nil
 }

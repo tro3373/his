@@ -82,3 +82,12 @@ func initConfig() {
 		fmt.Println("Using config file:", viper.ConfigFileUsed())
 	}
 }
+
+func getDefaultFindFilePattern() (string, error) {
+	userHomeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	pattern := fmt.Sprintf("%s/works/00_memos/*月.md", userHomeDir)
+	return pattern, nil
+}

@@ -6,6 +6,8 @@ import (
 	"strconv"
 
 	"github.com/spf13/cobra"
+	"github.com/tro3373/his/cmd/analyzer"
+	"github.com/tro3373/his/cmd/util"
 )
 
 // latestCmd represents the latest command
@@ -39,7 +41,7 @@ func init() {
 	// latestCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }
 
-func latest(args []string) error {
+func latest2(args []string) error {
 
 	outputCount := 1
 	if len(args) != 0 {
@@ -77,5 +79,27 @@ func latest(args []string) error {
 			timeLog.Tag,
 		)
 	}
+	return nil
+}
+
+func latest(args []string) error {
+
+	// outputCount := 1
+	// if len(args) != 0 {
+	// 	arg := args[0]
+	// 	tmp, err := strconv.Atoi(arg)
+	// 	if err == nil {
+	// 		outputCount = tmp
+	// 	}
+	// }
+	tag, outputCount := util.ParseTagArgs(args, 1)
+
+	pattern, err := getDefaultFindFilePattern()
+	if err != nil {
+		return err
+	}
+	result, err := analyzer.Analyze(pattern, 2) // always load 2 file
+	result.PrintTagResult(tag, outputCount)
+
 	return nil
 }

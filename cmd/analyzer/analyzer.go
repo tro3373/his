@@ -12,16 +12,46 @@ import (
 	"time"
 )
 
-func sampleCaller() error {
-	userHomeDir, err := os.UserHomeDir()
-	if err != nil {
-		return err
-	}
-	pattern := fmt.Sprintf("%s/works/00_memos/*月.md", userHomeDir)
-	result, err := Analyze(pattern, 2)
-	fmt.Printf("==> %#+v", result)
-	return err
+type BaseLog struct {
+	Date  string
+	Sec   int64
+	Tag   string
+	Title string
 }
+
+type TimeLog struct {
+	BaseLog
+	Start int64 // unix sec
+	End   int64 // unix sec
+}
+
+type TagSummaryLog struct {
+	BaseLog
+}
+
+type TagTitleSummaryLog struct {
+	BaseLog
+}
+
+// type LogBaser interface {
+// 	GetBaseLog() BaseLog
+// }
+
+type Result struct {
+	TagSummaryLogs      []*TagSummaryLog
+	TagTitleSummaryLogs []*TagTitleSummaryLog
+}
+
+// func sampleCaller() error {
+// 	userHomeDir, err := os.UserHomeDir()
+// 	if err != nil {
+// 		return err
+// 	}
+// 	pattern := fmt.Sprintf("%s/works/00_memos/*月.md", userHomeDir)
+// 	result, err := Analyze(pattern, 2)
+// 	fmt.Printf("==> %#+v", result)
+// 	return err
+// }
 
 func Analyze(filePathPattern string, maxLoadFile int32) (*Result, error) {
 	files, err := findRecentryFiles(filePathPattern, maxLoadFile)
@@ -92,8 +122,10 @@ func parseFile(file string) ([]*TimeLog, error) {
 			continue
 			// return nil, err
 		}
+		// fmt.Printf("NEW: %+v\n", timeLog)
 		if prevTimeLog != nil {
 			prevTimeLog.Fix(timeLog)
+			// fmt.Printf("Fixed: %+v\n", prevTimeLog)
 		}
 		prevTimeLog = timeLog
 		timeLogs = append(timeLogs, timeLog)
@@ -106,15 +138,6 @@ func parseFile(file string) ([]*TimeLog, error) {
 		validTimeLogs = append(validTimeLogs, l)
 	}
 	return validTimeLogs, nil
-}
-
-type TimeLog struct {
-	Date    string
-	Start   int64 // unix sec
-	End     int64 // unix sec
-	Summary int64
-	Tag     string
-	Title   string
 }
 
 func NewTimeLog(line string) (*TimeLog, error) {
@@ -130,9 +153,9 @@ func NewTimeLog(line string) (*TimeLog, error) {
 	if err != nil {
 		return tl, err
 	}
+	tl.Date = fmt.Sprintf("%s-%s-%s", startStr[0:4], startStr[4:6], startStr[6:8])
 	sec := startTime.Unix()
 	tl.Start = sec
-	tl.Date = time.Unix(sec, 0).Format("2006-01-02")
 
 	if len(parts) > 2 {
 		tl.Tag = parts[2]
@@ -145,14 +168,14 @@ func NewTimeLog(line string) (*TimeLog, error) {
 
 func (t *TimeLog) Fix(tl *TimeLog) {
 	t.End = tl.Start
-	t.Summary = t.End - t.Start
+	t.Sec = t.End - t.Start
 }
 
 func (t *TimeLog) Valid() bool {
 	if t.End == 0 {
 		return false
 	}
-	if t.Summary == 0 {
+	if t.Sec == 0 {
 		return false
 	}
 	if len(t.Date) == 0 {
@@ -164,48 +187,90 @@ func (t *TimeLog) Valid() bool {
 	return true
 }
 
-type Result struct {
-	SummaryLogs []*SummaryLog
+func NewTagSummaryLog(tl *TimeLog) *TagSummaryLog {
+	bl := BaseLog{
+		Date:  tl.Date,
+		Sec:   0,
+		Tag:   tl.Tag,
+		Title: tl.Title,
+	}
+	return &TagSummaryLog{
+		BaseLog: bl,
+	}
+}
+
+func NewTagTitleSummaryLog(tl *TimeLog) *TagTitleSummaryLog {
+	bl := BaseLog{
+		Date:  tl.Date,
+		Sec:   0,
+		Tag:   tl.Tag,
+		Title: tl.Title,
+	}
+	return &TagTitleSummaryLog{
+		BaseLog: bl,
+	}
 }
 
 func NewResult(timeLogs []*TimeLog) (*Result, error) {
-	var sls []*SummaryLog
-	findOrNewSummaryLog := func(tl *TimeLog) *SummaryLog {
-		for _, sl := range sls {
-			if sl.isTarget(tl) {
-				return sl
+	var tagSummaries []*TagSummaryLog
+	var tagTitleSummaries []*TagTitleSummaryLog
+	// TODO use generics!
+	findOrNewTagSummaryLog := func(tl *TimeLog) *TagSummaryLog {
+		for _, sum := range tagSummaries {
+			if sum.isTarget(tl) {
+				return sum
 			}
 		}
-		sl := &SummaryLog{}
-		sls = append(sls, sl)
-		return sl
+		sum := NewTagSummaryLog(tl)
+		tagSummaries = append(tagSummaries, sum)
+		return sum
+	}
+	findOrNewTagTitleSummaryLog := func(tl *TimeLog) *TagTitleSummaryLog {
+		for _, sum := range tagTitleSummaries {
+			if sum.isTarget(tl) {
+				return sum
+			}
+		}
+		sum := NewTagTitleSummaryLog(tl)
+		tagTitleSummaries = append(tagTitleSummaries, sum)
+		return sum
 	}
 	for _, tl := range timeLogs {
-		sl := findOrNewSummaryLog(tl)
-		sl.Append(tl)
+		// fmt.Printf("Result: %+v\n", tl)
+		tag := findOrNewTagSummaryLog(tl)
+		tag.Append(tl)
+
+		tagTitle := findOrNewTagTitleSummaryLog(tl)
+		tagTitle.Append(tl)
 	}
-	return &Result{sls}, nil
+	return &Result{
+		TagSummaryLogs:      tagSummaries,
+		TagTitleSummaryLogs: tagTitleSummaries,
+	}, nil
 }
 
-func (r *Result) PrintTagResult(maxPrintDateCount int) {
-	r.printResultHandler(maxPrintDateCount, func(s *SummaryLog) {
-		s.PrintTagFormatSummary()
+func (r *Result) PrintTagResult(tag string, maxPrintDateCount int) {
+	r.printResultHandler(tag, maxPrintDateCount, func(b BaseLog) {
+		b.PrintTagFormatSummary() // TODO remove cause Stringer is exist
 	})
+	// fmt.Printf("summary logs:%#+v\n", r.TagTitleSummaryLogs[0])
 }
 
 func (r *Result) PrintTagTitleResult(tag string, maxPrintDateCount int) {
-	r.printResultHandler(maxPrintDateCount, func(s *SummaryLog) {
-		if len(tag) != 0 && tag != s.Tag {
-			return
-		}
-		s.PrintTagTitleFormatSummary()
+	r.printResultHandler(tag, maxPrintDateCount, func(b BaseLog) {
+		b.PrintTagTitleFormatSummary() // TODO remove cause Stringer is exist
 	})
+	// fmt.Println("-----")
+	// for _, sl := range r.TagTitleSummaryLogs {
+	// 	fmt.Printf("%#+v\n", sl)
+	// }
 }
 
-func (r *Result) printResultHandler(maxPrintDateCount int, fn func(s *SummaryLog)) {
+func (r *Result) printResultHandler(tag string, maxPrintDateCount int, fn func(b BaseLog)) {
 	count := 0
 	prevDate := ""
-	for _, s := range r.SummaryLogs {
+	// TODO for tag summary logs
+	for _, s := range r.TagTitleSummaryLogs {
 		if prevDate != s.Date {
 			count++
 			if count > maxPrintDateCount {
@@ -213,27 +278,57 @@ func (r *Result) printResultHandler(maxPrintDateCount int, fn func(s *SummaryLog
 			}
 			prevDate = s.Date
 		}
-		fn(s)
+		b := s.GetBaseLog()
+		if len(tag) != 0 && tag != b.Tag {
+			continue
+		}
+		fmt.Println(s)
+		// fn(b) TODO
 	}
 }
 
-type SummaryLog struct {
-	Date  string
-	Sec   int64
-	Tag   string
-	Title string
+func (ts *TagSummaryLog) GetBaseLog() BaseLog {
+	return ts.BaseLog
 }
 
-func (s *SummaryLog) isTarget(t *TimeLog) bool {
-	return s.Date == t.Date && s.Tag == t.Tag && s.Title == t.Title
+func (ts *TagSummaryLog) isTarget(t *TimeLog) bool {
+	return ts.Date == t.Date && ts.Tag == t.Tag
 }
 
-func (s *SummaryLog) Append(t *TimeLog) {
-	s.Sec = s.Sec + t.Summary
+// TODO use this
+func (ts *TagSummaryLog) String() string {
+	return fmt.Sprintf(
+		"%s\t%s\t%s",
+		ts.Date,
+		ts.HumanTimeString(),
+		ts.Tag,
+	)
 }
 
-func (s *SummaryLog) HumanTimeString() string {
-	sec := s.Sec
+func (tts *TagTitleSummaryLog) GetBaseLog() BaseLog {
+	return tts.BaseLog
+}
+
+func (tts *TagTitleSummaryLog) isTarget(t *TimeLog) bool {
+	return tts.Date == t.Date && tts.Tag == t.Tag && tts.Title == t.Title
+}
+
+func (tts *TagTitleSummaryLog) String() string {
+	return fmt.Sprintf(
+		"%s\t%s\t%s\t%s",
+		tts.Date,
+		tts.HumanTimeString(),
+		tts.Tag,
+		tts.Title,
+	)
+}
+
+func (b *BaseLog) Append(t *TimeLog) {
+	b.Sec = b.Sec + t.Sec
+}
+
+func (b *BaseLog) HumanTimeString() string {
+	sec := b.Sec
 	return fmt.Sprintf("%02dh%02dm(+%02ds)",
 		sec/60/60,
 		sec/60%60,
@@ -241,21 +336,22 @@ func (s *SummaryLog) HumanTimeString() string {
 	)
 }
 
-func (s *SummaryLog) PrintTagTitleFormatSummary() {
+// TODO no use this
+func (s *BaseLog) PrintTagFormatSummary() {
+	fmt.Printf(
+		"%s\t%s\t%s\n",
+		s.Date,
+		s.HumanTimeString(),
+		s.Tag,
+	)
+}
+
+func (s *BaseLog) PrintTagTitleFormatSummary() {
 	fmt.Printf(
 		"%s\t%s\t%s\t%s\n",
 		s.Date,
 		s.HumanTimeString(),
 		s.Tag,
 		s.Title,
-	)
-}
-
-func (s *SummaryLog) PrintTagFormatSummary() {
-	fmt.Printf(
-		"%s\t%s\t%s\n",
-		s.Date,
-		s.HumanTimeString(),
-		s.Tag,
 	)
 }

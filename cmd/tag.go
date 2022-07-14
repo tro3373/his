@@ -6,6 +6,8 @@ import (
 	"strconv"
 
 	"github.com/spf13/cobra"
+	"github.com/tro3373/his/cmd/analyzer"
+	"github.com/tro3373/his/cmd/util"
 )
 
 // tagCmd represents the tag command
@@ -39,7 +41,7 @@ func init() {
 	// tagCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }
 
-func tag(args []string) error {
+func tag2(args []string) error {
 
 	tag, outputCount := parseTagArgs(args)
 
@@ -74,6 +76,21 @@ func tag(args []string) error {
 			timeLog.Title,
 		)
 	}
+	return nil
+}
+
+func tag(args []string) error {
+
+	// tag, outputCount := parseTagArgs(args)
+	tag, outputCount := util.ParseTagArgs(args, 14)
+
+	pattern, err := getDefaultFindFilePattern()
+	if err != nil {
+		return err
+	}
+	result, err := analyzer.Analyze(pattern, 2) // always load 2 file
+	result.PrintTagTitleResult(tag, outputCount)
+
 	return nil
 }
 
