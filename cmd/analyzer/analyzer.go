@@ -33,9 +33,9 @@ type TagTitleSummaryLog struct {
 	BaseLog
 }
 
-// type LogBaser interface {
-// 	GetBaseLog() BaseLog
-// }
+type LogBaser interface {
+	GetBaseLog() BaseLog
+}
 
 type Result struct {
 	TagSummaryLogs      []*TagSummaryLog
@@ -249,43 +249,102 @@ func NewResult(timeLogs []*TimeLog) (*Result, error) {
 	}, nil
 }
 
+// func (r *Result) PrintTagResult(tag string, maxPrintDateCount int) {
+// 	r.printResultHandler(tag, maxPrintDateCount, func(b BaseLog) {
+// 		b.PrintTagFormatSummary() // TODO remove cause Stringer is exist
+// 	})
+// 	// fmt.Printf("summary logs:%#+v\n", r.TagTitleSummaryLogs[0])
+// }
+// func (r *Result) PrintTagTitleResult(tag string, maxPrintDateCount int) {
+// 	r.printResultHandler(tag, maxPrintDateCount, func(b BaseLog) {
+// 		b.PrintTagTitleFormatSummary() // TODO remove cause Stringer is exist
+// 	})
+// 	// fmt.Println("-----")
+// 	// for _, sl := range r.TagTitleSummaryLogs {
+// 	// 	fmt.Printf("%#+v\n", sl)
+// 	// }
+// }
 func (r *Result) PrintTagResult(tag string, maxPrintDateCount int) {
-	r.printResultHandler(tag, maxPrintDateCount, func(b BaseLog) {
-		b.PrintTagFormatSummary() // TODO remove cause Stringer is exist
-	})
-	// fmt.Printf("summary logs:%#+v\n", r.TagTitleSummaryLogs[0])
+	lbs := []LogBaser{}
+	for _, l := range r.TagSummaryLogs {
+		lbs = append(lbs, l)
+	}
+	r.printResultHandler(lbs, tag, maxPrintDateCount)
+	// r.printResultHandler(r.TagSummaryLogs, tag, maxPrintDateCount)
 }
 
 func (r *Result) PrintTagTitleResult(tag string, maxPrintDateCount int) {
-	r.printResultHandler(tag, maxPrintDateCount, func(b BaseLog) {
-		b.PrintTagTitleFormatSummary() // TODO remove cause Stringer is exist
-	})
-	// fmt.Println("-----")
-	// for _, sl := range r.TagTitleSummaryLogs {
-	// 	fmt.Printf("%#+v\n", sl)
-	// }
+	lbs := []LogBaser{}
+	for _, l := range r.TagTitleSummaryLogs {
+		lbs = append(lbs, l)
+	}
+	r.printResultHandler(lbs, tag, maxPrintDateCount)
+	// r.printResultHandler(r.TagTitleSummaryLogs, tag, maxPrintDateCount)
 }
 
-func (r *Result) printResultHandler(tag string, maxPrintDateCount int, fn func(b BaseLog)) {
+func (r *Result) printResultHandler(lbs []LogBaser, tag string, maxPrintDateCount int) {
 	count := 0
 	prevDate := ""
-	// TODO for tag summary logs
-	for _, s := range r.TagTitleSummaryLogs {
-		if prevDate != s.Date {
+	for _, lb := range lbs {
+		// lb := i.(LogBaser)
+		// s := lb.
+		b := lb.GetBaseLog()
+		if prevDate != b.Date {
 			count++
 			if count > maxPrintDateCount {
 				return
 			}
-			prevDate = s.Date
+			prevDate = b.Date
 		}
-		b := s.GetBaseLog()
 		if len(tag) != 0 && tag != b.Tag {
 			continue
 		}
-		fmt.Println(s)
-		// fn(b) TODO
+		fmt.Printf("%s\n", lb)
 	}
 }
+
+// func (r *Result) printResultHandler(lbs []LogBaser, tag string, maxPrintDateCount int) {
+// 	count := 0
+// 	prevDate := ""
+// 	// TODO for tag summary logs
+// 	for _, lb := range lbs {
+// 		// s := lb.
+// 		b := lb.GetBaseLog()
+// 		if prevDate != b.Date {
+// 			count++
+// 			if count > maxPrintDateCount {
+// 				return
+// 			}
+// 			prevDate = b.Date
+// 		}
+// 		if len(tag) != 0 && tag != b.Tag {
+// 			continue
+// 		}
+// 		fmt.Println(b)
+// 		// fn(b) TODO
+// 	}
+// }
+//
+// func (r *Result) printResultHandler(tag string, maxPrintDateCount int, fn func(b BaseLog)) {
+// 	count := 0
+// 	prevDate := ""
+// 	// TODO for tag summary logs
+// 	for _, s := range r.TagTitleSummaryLogs {
+// 		if prevDate != s.Date {
+// 			count++
+// 			if count > maxPrintDateCount {
+// 				return
+// 			}
+// 			prevDate = s.Date
+// 		}
+// 		b := s.GetBaseLog()
+// 		if len(tag) != 0 && tag != b.Tag {
+// 			continue
+// 		}
+// 		fmt.Println(s)
+// 		// fn(b) TODO
+// 	}
+// }
 
 func (ts *TagSummaryLog) GetBaseLog() BaseLog {
 	return ts.BaseLog
