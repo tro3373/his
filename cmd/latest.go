@@ -1,9 +1,7 @@
 package cmd
 
 import (
-	"fmt"
 	"log"
-	"strconv"
 
 	"github.com/spf13/cobra"
 	"github.com/tro3373/his/cmd/analyzer"
@@ -41,57 +39,8 @@ func init() {
 	// latestCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }
 
-func latest2(args []string) error {
-
-	outputCount := 1
-	if len(args) != 0 {
-		arg := args[0]
-		tmp, err := strconv.Atoi(arg)
-		if err == nil {
-			outputCount = tmp
-		}
-	}
-
-	dateLogs, err := collectDateLogs(2) // always load 2 file
-	if err != nil {
-		return err
-	}
-
-	var timeLogs []*TimeLog
-	count := 0
-	for _, dateLog := range dateLogs {
-		count++
-		if count > outputCount {
-			break
-		}
-		timeLogs = append(timeLogs, dateLog.TimeLogs...)
-	}
-
-	summaryTimeLogs := summaryTimeLog(timeLogs, false)
-	for _, timeLog := range summaryTimeLogs {
-		if len(timeLog.Tag) == 0 {
-			continue
-		}
-		fmt.Printf(
-			"%s\t%s\t%s\n",
-			timeLog.Date,
-			SummaryTimeString(timeLog.Summary),
-			timeLog.Tag,
-		)
-	}
-	return nil
-}
-
 func latest(args []string) error {
 
-	// outputCount := 1
-	// if len(args) != 0 {
-	// 	arg := args[0]
-	// 	tmp, err := strconv.Atoi(arg)
-	// 	if err == nil {
-	// 		outputCount = tmp
-	// 	}
-	// }
 	tag, outputCount := util.ParseTagArgs(args, 1)
 
 	pattern, err := getDefaultFindFilePattern()

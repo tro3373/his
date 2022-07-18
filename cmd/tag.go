@@ -1,9 +1,7 @@
 package cmd
 
 import (
-	"fmt"
 	"log"
-	"strconv"
 
 	"github.com/spf13/cobra"
 	"github.com/tro3373/his/cmd/analyzer"
@@ -41,47 +39,8 @@ func init() {
 	// tagCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }
 
-func tag2(args []string) error {
-
-	tag, outputCount := parseTagArgs(args)
-
-	dateLogs, err := collectDateLogs(2) // always load 2 file
-	if err != nil {
-		return err
-	}
-
-	var timeLogs []*TimeLog
-	count := 0
-	for _, dateLog := range dateLogs {
-		count++
-		if count > outputCount {
-			break
-		}
-		timeLogs = append(timeLogs, dateLog.TimeLogs...)
-	}
-
-	summaryTimeLogs := summaryTimeLog(timeLogs, true)
-	for _, timeLog := range summaryTimeLogs {
-		if len(timeLog.Tag) == 0 {
-			continue
-		}
-		if len(tag) != 0 && tag != timeLog.Tag {
-			continue
-		}
-		fmt.Printf(
-			"%s\t%s\t%s\t%s\n",
-			timeLog.Date,
-			SummaryTimeString(timeLog.Summary),
-			timeLog.Tag,
-			timeLog.Title,
-		)
-	}
-	return nil
-}
-
 func tag(args []string) error {
 
-	// tag, outputCount := parseTagArgs(args)
 	tag, outputCount := util.ParseTagArgs(args, 14)
 
 	pattern, err := getDefaultFindFilePattern()
@@ -92,24 +51,4 @@ func tag(args []string) error {
 	result.PrintTagTitleResult(tag, outputCount)
 
 	return nil
-}
-
-func parseTagArgs(args []string) (string, int) {
-	// default
-	tag := ""
-	count := 14
-
-	if len(args) == 0 {
-		return tag, count
-	}
-
-	for _, arg := range args {
-		tmp, err := strconv.Atoi(arg)
-		if err == nil {
-			count = tmp
-			continue
-		}
-		tag = arg
-	}
-	return tag, count
 }

@@ -42,17 +42,6 @@ type Result struct {
 	TagTitleSummaryLogs []*TagTitleSummaryLog
 }
 
-// func sampleCaller() error {
-// 	userHomeDir, err := os.UserHomeDir()
-// 	if err != nil {
-// 		return err
-// 	}
-// 	pattern := fmt.Sprintf("%s/works/00_memos/*月.md", userHomeDir)
-// 	result, err := Analyze(pattern, 2)
-// 	fmt.Printf("==> %#+v", result)
-// 	return err
-// }
-
 func Analyze(filePathPattern string, maxLoadFile int32) (*Result, error) {
 	files, err := findRecentryFiles(filePathPattern, maxLoadFile)
 	if err != nil {
@@ -249,21 +238,6 @@ func NewResult(timeLogs []*TimeLog) (*Result, error) {
 	}, nil
 }
 
-// func (r *Result) PrintTagResult(tag string, maxPrintDateCount int) {
-// 	r.printResultHandler(tag, maxPrintDateCount, func(b BaseLog) {
-// 		b.PrintTagFormatSummary() // TODO remove cause Stringer is exist
-// 	})
-// 	// fmt.Printf("summary logs:%#+v\n", r.TagTitleSummaryLogs[0])
-// }
-// func (r *Result) PrintTagTitleResult(tag string, maxPrintDateCount int) {
-// 	r.printResultHandler(tag, maxPrintDateCount, func(b BaseLog) {
-// 		b.PrintTagTitleFormatSummary() // TODO remove cause Stringer is exist
-// 	})
-// 	// fmt.Println("-----")
-// 	// for _, sl := range r.TagTitleSummaryLogs {
-// 	// 	fmt.Printf("%#+v\n", sl)
-// 	// }
-// }
 func (r *Result) PrintTagResult(tag string, maxPrintDateCount int) {
 	lbs := []LogBaser{}
 	for _, l := range r.TagSummaryLogs {
@@ -279,15 +253,12 @@ func (r *Result) PrintTagTitleResult(tag string, maxPrintDateCount int) {
 		lbs = append(lbs, l)
 	}
 	r.printResultHandler(lbs, tag, maxPrintDateCount)
-	// r.printResultHandler(r.TagTitleSummaryLogs, tag, maxPrintDateCount)
 }
 
 func (r *Result) printResultHandler(lbs []LogBaser, tag string, maxPrintDateCount int) {
 	count := 0
 	prevDate := ""
 	for _, lb := range lbs {
-		// lb := i.(LogBaser)
-		// s := lb.
 		b := lb.GetBaseLog()
 		if prevDate != b.Date {
 			count++
@@ -303,49 +274,6 @@ func (r *Result) printResultHandler(lbs []LogBaser, tag string, maxPrintDateCoun
 	}
 }
 
-// func (r *Result) printResultHandler(lbs []LogBaser, tag string, maxPrintDateCount int) {
-// 	count := 0
-// 	prevDate := ""
-// 	// TODO for tag summary logs
-// 	for _, lb := range lbs {
-// 		// s := lb.
-// 		b := lb.GetBaseLog()
-// 		if prevDate != b.Date {
-// 			count++
-// 			if count > maxPrintDateCount {
-// 				return
-// 			}
-// 			prevDate = b.Date
-// 		}
-// 		if len(tag) != 0 && tag != b.Tag {
-// 			continue
-// 		}
-// 		fmt.Println(b)
-// 		// fn(b) TODO
-// 	}
-// }
-//
-// func (r *Result) printResultHandler(tag string, maxPrintDateCount int, fn func(b BaseLog)) {
-// 	count := 0
-// 	prevDate := ""
-// 	// TODO for tag summary logs
-// 	for _, s := range r.TagTitleSummaryLogs {
-// 		if prevDate != s.Date {
-// 			count++
-// 			if count > maxPrintDateCount {
-// 				return
-// 			}
-// 			prevDate = s.Date
-// 		}
-// 		b := s.GetBaseLog()
-// 		if len(tag) != 0 && tag != b.Tag {
-// 			continue
-// 		}
-// 		fmt.Println(s)
-// 		// fn(b) TODO
-// 	}
-// }
-
 func (ts *TagSummaryLog) GetBaseLog() BaseLog {
 	return ts.BaseLog
 }
@@ -354,7 +282,6 @@ func (ts *TagSummaryLog) isTarget(t *TimeLog) bool {
 	return ts.Date == t.Date && ts.Tag == t.Tag
 }
 
-// TODO use this
 func (ts *TagSummaryLog) String() string {
 	return fmt.Sprintf(
 		"%s\t%s\t%s",
@@ -392,25 +319,5 @@ func (b *BaseLog) HumanTimeString() string {
 		sec/60/60,
 		sec/60%60,
 		sec%60,
-	)
-}
-
-// TODO no use this
-func (s *BaseLog) PrintTagFormatSummary() {
-	fmt.Printf(
-		"%s\t%s\t%s\n",
-		s.Date,
-		s.HumanTimeString(),
-		s.Tag,
-	)
-}
-
-func (s *BaseLog) PrintTagTitleFormatSummary() {
-	fmt.Printf(
-		"%s\t%s\t%s\t%s\n",
-		s.Date,
-		s.HumanTimeString(),
-		s.Tag,
-		s.Title,
 	)
 }
