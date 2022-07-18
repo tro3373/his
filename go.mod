@@ -1,10 +1,9 @@
 module github.com/tro3373/his
 
-go 1.17
+go 1.18
 
 require (
 	github.com/mitchellh/go-homedir v1.1.0
-	github.com/pkg/errors v0.8.1
 	github.com/spf13/cobra v1.3.0
 	github.com/spf13/viper v1.10.1
 )
