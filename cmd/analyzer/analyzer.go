@@ -35,6 +35,7 @@ type TagTitleSummaryLog struct {
 
 type LogBaser interface {
 	GetBaseLog() BaseLog
+	IsTarget(t *TimeLog) bool
 }
 
 type Result struct {
@@ -203,10 +204,9 @@ func NewTagTitleSummaryLog(tl *TimeLog) *TagTitleSummaryLog {
 func NewResult(timeLogs []*TimeLog) (*Result, error) {
 	var tagSummaries []*TagSummaryLog
 	var tagTitleSummaries []*TagTitleSummaryLog
-	// TODO use generics!
 	findOrNewTagSummaryLog := func(tl *TimeLog) *TagSummaryLog {
 		for _, sum := range tagSummaries {
-			if sum.isTarget(tl) {
+			if sum.IsTarget(tl) {
 				return sum
 			}
 		}
@@ -216,7 +216,7 @@ func NewResult(timeLogs []*TimeLog) (*Result, error) {
 	}
 	findOrNewTagTitleSummaryLog := func(tl *TimeLog) *TagTitleSummaryLog {
 		for _, sum := range tagTitleSummaries {
-			if sum.isTarget(tl) {
+			if sum.IsTarget(tl) {
 				return sum
 			}
 		}
@@ -278,7 +278,7 @@ func (ts *TagSummaryLog) GetBaseLog() BaseLog {
 	return ts.BaseLog
 }
 
-func (ts *TagSummaryLog) isTarget(t *TimeLog) bool {
+func (ts *TagSummaryLog) IsTarget(t *TimeLog) bool {
 	return ts.Date == t.Date && ts.Tag == t.Tag
 }
 
@@ -295,7 +295,7 @@ func (tts *TagTitleSummaryLog) GetBaseLog() BaseLog {
 	return tts.BaseLog
 }
 
-func (tts *TagTitleSummaryLog) isTarget(t *TimeLog) bool {
+func (tts *TagTitleSummaryLog) IsTarget(t *TimeLog) bool {
 	return tts.Date == t.Date && tts.Tag == t.Tag && tts.Title == t.Title
 }
 
