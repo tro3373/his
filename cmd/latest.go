@@ -1,11 +1,11 @@
 package cmd
 
 import (
-	"fmt"
 	"log"
-	"strconv"
 
 	"github.com/spf13/cobra"
+	"github.com/tro3373/his/cmd/analyzer"
+	"github.com/tro3373/his/cmd/util"
 )
 
 // latestCmd represents the latest command
@@ -41,42 +41,14 @@ func init() {
 
 func latest(args []string) error {
 
-	outputCount := 1
-	if len(args) != 0 {
-		arg := args[0]
-		tmp, err := strconv.Atoi(arg)
-		if err == nil {
-			outputCount = tmp
-		}
-	}
+	tag, outputCount := util.ParseTagArgs(args, 1)
 
-	dateLogs, err := collectDateLogs(2) // always load 2 file
+	pattern, err := getDefaultFindFilePattern()
 	if err != nil {
 		return err
 	}
+	result, err := analyzer.Analyze(pattern, 2) // always load 2 file
+	result.PrintTagResult(tag, outputCount)
 
-	count := 0
-	for _, dateLog := range dateLogs {
-		count++
-		if count > outputCount {
-			break
-		}
-		// for _, timeLog := range dateLog.TimeLogs {
-		// 	fmt.Println("@@@", timeLog.Tag, timeLog.Title, timeLog.Start, timeLog.Summary)
-		// }
-
-		timeLogs := summaryTimeLog(dateLog.TimeLogs, false)
-		for _, timeLog := range timeLogs {
-			if len(timeLog.Tag) == 0 {
-				continue
-			}
-			fmt.Printf(
-				"%s\t%s\t%s\n",
-				dateLog.Date,
-				timeLog.SummaryTimeString(),
-				timeLog.Tag,
-			)
-		}
-	}
 	return nil
 }

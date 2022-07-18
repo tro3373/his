@@ -1,11 +1,11 @@
 package cmd
 
 import (
-	"fmt"
 	"log"
-	"strconv"
 
 	"github.com/spf13/cobra"
+	"github.com/tro3373/his/cmd/analyzer"
+	"github.com/tro3373/his/cmd/util"
 )
 
 // tagCmd represents the tag command
@@ -41,55 +41,14 @@ func init() {
 
 func tag(args []string) error {
 
-	tag, outputCount := parseTagArgs(args)
+	tag, outputCount := util.ParseTagArgs(args, 14)
 
-	dateLogs, err := collectDateLogs(2) // always load 2 file
+	pattern, err := getDefaultFindFilePattern()
 	if err != nil {
 		return err
 	}
+	result, err := analyzer.Analyze(pattern, 2) // always load 2 file
+	result.PrintTagTitleResult(tag, outputCount)
 
-	count := 0
-	for _, dateLog := range dateLogs {
-		count++
-		if count > outputCount {
-			break
-		}
-		timeLogs := summaryTimeLog(dateLog.TimeLogs, true)
-		for _, timeLog := range timeLogs {
-			if len(timeLog.Tag) == 0 {
-				continue
-			}
-			if len(tag) != 0 && tag != timeLog.Tag {
-				continue
-			}
-			fmt.Printf(
-				"%s\t%s\t%s\t%s\n",
-				dateLog.Date,
-				timeLog.SummaryTimeString(),
-				timeLog.Tag,
-				timeLog.Title,
-			)
-		}
-	}
 	return nil
-}
-
-func parseTagArgs(args []string) (string, int) {
-	// default
-	tag := ""
-	count := 14
-
-	if len(args) == 0 {
-		return tag, count
-	}
-
-	for _, arg := range args {
-		tmp, err := strconv.Atoi(arg)
-		if err == nil {
-			count = tmp
-			continue
-		}
-		tag = arg
-	}
-	return tag, count
 }
