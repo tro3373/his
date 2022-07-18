@@ -1,7 +1,8 @@
 # TODO
 
-- summary log
 - test
+- actions
+- release
 
 
 # DONE
