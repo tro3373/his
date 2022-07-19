@@ -238,6 +238,17 @@ func NewResult(timeLogs []*TimeLog) (*Result, error) {
 	}, nil
 }
 
+// func findOrNew[T LogBaser](list []LogBaser, tl *TimeLog, newer func(tl *TimeLog) LogBaser) LogBaser {
+// 	for _, lb := range list {
+// 		if lb.IsTarget(tl) {
+// 			return lb
+// 		}
+// 	}
+// 	lb := newer(tl)
+// 	list = append(list, lb)
+// 	return lb
+// }
+
 func (r *Result) PrintTagResult(tag string, maxPrintDateCount int) {
 	lbs := []LogBaser{}
 	for _, l := range r.TagSummaryLogs {
