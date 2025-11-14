@@ -3,6 +3,7 @@ package analyzer
 import (
 	"bufio"
 	"fmt"
+	"log/slog"
 	"math"
 	"os"
 	"path/filepath"
@@ -49,7 +50,7 @@ func Analyze(filePathPattern string, maxLoadFile int32) (*Result, error) {
 		return nil, err
 	}
 	logs := parseFiles(files)
-	return NewResult(logs)
+	return NewResult(logs), nil
 }
 
 func findRecentryFiles(filePathPattern string, maxLoadFile int32) ([]string, error) {
@@ -71,7 +72,7 @@ func parseFiles(files []string) []*TimeLog {
 		timeLogs, err := parseFile(file)
 		if err != nil {
 			// return nil, err
-			fmt.Println("Failed to parseFile file:", file, err)
+			slog.Error("Failed to parseFile", "file", file, "err", err)
 			continue
 		}
 		logs = append(logs, timeLogs...)
@@ -94,10 +95,15 @@ func parseFile(file string) ([]*TimeLog, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer fp.Close()
+	defer func() {
+		err := fp.Close()
+		if err != nil {
+			slog.Error("Failed to close", "file", file, "err", err)
+		}
+	}()
 
 	var timeLogs = []*TimeLog{}
-	regStartDate := regexp.MustCompile(`^- \d{8}_\d{6}`)
+	regStartDate := regexp.MustCompile(`^## \d{8}_\d{6}`)
 
 	scanner := bufio.NewScanner(fp)
 	var prevTimeLog *TimeLog
@@ -108,7 +114,7 @@ func parseFile(file string) ([]*TimeLog, error) {
 		}
 		timeLog, err := NewTimeLog(line)
 		if err != nil {
-			fmt.Println("Failed to NewTimeLog line:", line, err)
+			slog.Error("Failed to NewTimeLog", "line", line, "err", err)
 			continue
 			// return nil, err
 		}
@@ -201,7 +207,7 @@ func NewTagTitleSummaryLog(tl *TimeLog) *TagTitleSummaryLog {
 	}
 }
 
-func NewResult(timeLogs []*TimeLog) (*Result, error) {
+func NewResult(timeLogs []*TimeLog) *Result {
 	var tagSummaries []*TagSummaryLog
 	var tagTitleSummaries []*TagTitleSummaryLog
 	findOrNewTagSummaryLog := func(tl *TimeLog) *TagSummaryLog {
@@ -235,7 +241,7 @@ func NewResult(timeLogs []*TimeLog) (*Result, error) {
 	return &Result{
 		TagSummaryLogs:      tagSummaries,
 		TagTitleSummaryLogs: tagTitleSummaries,
-	}, nil
+	}
 }
 
 // func findOrNew[T LogBaser](list []LogBaser, tl *TimeLog, newer func(tl *TimeLog) LogBaser) LogBaser {

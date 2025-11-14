@@ -40,7 +40,6 @@ func init() {
 }
 
 func latest(args []string) error {
-
 	tag, outputCount := util.ParseTagArgs(args, 1)
 
 	pattern, err := getDefaultFindFilePattern()
@@ -48,6 +47,9 @@ func latest(args []string) error {
 		return err
 	}
 	result, err := analyzer.Analyze(pattern, 2) // always load 2 file
+	if err != nil {
+		return err
+	}
 	result.PrintTagResult(tag, outputCount)
 
 	return nil

@@ -48,6 +48,9 @@ func tag(args []string) error {
 		return err
 	}
 	result, err := analyzer.Analyze(pattern, 2) // always load 2 file
+	if err != nil {
+		return err
+	}
 	result.PrintTagTitleResult(tag, outputCount)
 
 	return nil

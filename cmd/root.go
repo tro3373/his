@@ -2,7 +2,10 @@ package cmd
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -35,7 +38,7 @@ to quickly create a Cobra application.`,
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Println(err)
+		slog.Error("Failed to execute root command", "error", err)
 		os.Exit(1)
 	}
 }
@@ -47,7 +50,7 @@ func init() {
 	// Cobra supports persistent flags, which, if defined here,
 	// will be global for your application.
 
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.his.yaml)")
+	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.his)")
 
 	// Cobra also supports local flags, which will only run
 	// when this action is called directly.
@@ -72,6 +75,7 @@ func initConfig() {
 
 		// Search config in home directory with name ".his" (without extension).
 		viper.AddConfigPath(home)
+		viper.SetConfigType("yaml")
 		viper.SetConfigName(".his")
 	}
 
@@ -79,15 +83,29 @@ func initConfig() {
 
 	// If a config file is found, read it in.
 	if err := viper.ReadInConfig(); err == nil {
-		fmt.Println("Using config file:", viper.ConfigFileUsed())
+		slog.Debug("Using config", "file", viper.ConfigFileUsed())
 	}
 }
 
 func getDefaultFindFilePattern() (string, error) {
-	userHomeDir, err := os.UserHomeDir()
+	pattern := getGlobPatternSetting()
+	return expandTilde(pattern)
+}
+
+func getGlobPatternSetting() string {
+	if pattern := viper.GetString("pattern"); pattern != "" {
+		return pattern
+	}
+	return "~/*.md"
+}
+
+func expandTilde(path string) (string, error) {
+	if !strings.HasPrefix(path, "~/") {
+		return path, nil
+	}
+	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	pattern := fmt.Sprintf("%s/works/00_memos/*月.md", userHomeDir)
-	return pattern, nil
+	return filepath.Join(home, path[2:]), nil
 }
