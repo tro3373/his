@@ -1,6 +1,6 @@
 module github.com/tro3373/his
 
-go 1.18
+go 1.25
 
 require (
 	github.com/mitchellh/go-homedir v1.1.0
