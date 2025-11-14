@@ -11,7 +11,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
         with:
-          fetch-depth: 1 # 最新のみ
+          fetch-depth: 0 # full history for diff for golangci-lint
       - name: Setup Go
         uses: actions/setup-go@v5.5.0
         with:
