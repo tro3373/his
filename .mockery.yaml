@@ -1,0 +1,30 @@
+# 全インターフェースのモックを生成するか（falseなら個別指定のみ）
+all: false
+# モック生成先ディレクトリ（mocksサブディレクトリに出力）
+dir: "{{.InterfaceDir}}/mocks"
+# 生成されるモックファイル名（_test.goを付けない）
+filename: mocks.go
+# 既存ファイルがあっても強制的に上書き
+force-file-write: true
+# 生成後に goimports でコード整形
+formatter: goimports
+# ログ出力レベル
+log-level: info
+# 生成されるモック構造体名のテンプレート(UserRepository -> MockUserRepository)
+structname: "{{.Mock}}{{.InterfaceName}}"
+# モックのパッケージ名（元のパッケージ名を使う）
+# pkgname: '{{.SrcPackageName}}'
+pkgname: "mocks"
+# ディレクトリを再帰的に探索するか
+recursive: false
+# テンプレートスキーマファイルが存在しないとエラー
+require-template-schema-exists: true
+# 使用するテンプレート（testify用）
+template: testify
+# テンプレートスキーマファイル名
+template-schema: "{{.Template}}.schema.json"
+# パッケージごとの個別設定
+packages:
+  github.com/tro3373/example/pkg/external:
+    config:
+      all: true
