@@ -1,0 +1,121 @@
+package cmd
+
+import (
+	"errors"
+	"fmt"
+	"log"
+	"os"
+	"time"
+
+	"github.com/mitchellh/mapstructure"
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+	"github.com/tro3373/his/internal/gen"
+)
+
+var genCmd = &cobra.Command{
+	Use:   "gen [YYYY-MM-DD|today]",
+	Short: "Write the daily time headings from Claude Code sessions and recorded calls",
+	Long: `Write the daily time headings of each log under the "gen" section of the config.
+
+Without an argument, fills the last 30 days up to yesterday that are not written yet.
+With today, fills those days and today. Run it when the day ends:
+today's headings are written once, and later runs only add task links.
+With a date, does that day only.
+
+Config (~/.his):
+  gen:
+    store_root: ~/notes               # holds tasks/; links are relative to it
+    rec_dir: ~/rec/out                # rec's output directory (REC_OUT_DIR)
+    sessions:                         # every Claude Code config dir
+      - ~/.claude/projects
+      - ~/work/.claude/projects
+    lunch: {start: "12:00", end: "13:00"}
+    logs:
+      - name: work
+        dir: ~/notes/work
+        roots: [~/work]               # sessions working under these
+        apps: [slack, zoom]
+      - name: personal
+        dir: ~/notes/personal
+        apps: [chrome]
+        default: true                 # every other session and task
+
+A project is the JOB_TAG exported by the nearest .envrc above the session's
+working directory ("export JOB_TAG=ACME"), else the repository name.`,
+	Args: cobra.MaximumNArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		if err := runGen(args); err != nil {
+			log.Fatalf("==> Failed to execute gen. Err:%+v\n", err)
+		}
+	},
+}
+
+func init() {
+	rootCmd.AddCommand(genCmd)
+}
+
+func runGen(args []string) error {
+	cfg, err := loadGenConfig()
+	if err != nil {
+		return err
+	}
+	now := time.Now()
+	target, err := parseTarget(args, now)
+	if err != nil {
+		return err
+	}
+	return gen.Run(cfg, now, target, os.Stdout)
+}
+
+func parseTarget(args []string, now time.Time) (time.Time, error) {
+	if len(args) == 0 {
+		return time.Time{}, nil
+	}
+	if args[0] == "today" {
+		return now, nil
+	}
+	t, err := time.ParseInLocation(time.DateOnly, args[0], now.Location())
+	if err != nil {
+		return time.Time{}, fmt.Errorf("date must be YYYY-MM-DD or today: %w", err)
+	}
+	return t, nil
+}
+
+func loadGenConfig() (gen.Config, error) {
+	var cfg gen.Config
+	hooks := viper.DecodeHook(mapstructure.ComposeDecodeHookFunc(
+		mapstructure.TextUnmarshallerHookFunc(),
+		mapstructure.StringToSliceHookFunc(","),
+	))
+	if err := viper.UnmarshalKey("gen", &cfg, hooks); err != nil {
+		return cfg, fmt.Errorf("failed to read the gen config: %w", err)
+	}
+	expand := func(p *string) error {
+		v, err := expandTilde(*p)
+		*p = v
+		return err
+	}
+	if err := errors.Join(expand(&cfg.StoreRoot), expand(&cfg.RecDir)); err != nil {
+		return cfg, err
+	}
+	for i := range cfg.Sessions {
+		if err := expand(&cfg.Sessions[i]); err != nil {
+			return cfg, err
+		}
+	}
+	for i := range cfg.Logs {
+		if err := expand(&cfg.Logs[i].Dir); err != nil {
+			return cfg, err
+		}
+		for j := range cfg.Logs[i].Roots {
+			if err := expand(&cfg.Logs[i].Roots[j]); err != nil {
+				return cfg, err
+			}
+		}
+	}
+	if err := cfg.Validate(); err != nil {
+		return cfg, fmt.Errorf("invalid gen config (see `his gen --help`): %w", err)
+	}
+	return cfg, nil
+}
