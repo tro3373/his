@@ -1,7 +1,6 @@
 package analyzer
 
 import (
-	"bufio"
 	"fmt"
 	"log/slog"
 	"math"
@@ -9,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -91,75 +91,91 @@ func parseFiles(files []string) []*TimeLog {
 }
 
 func parseFile(file string) ([]*TimeLog, error) {
-	fp, err := os.Open(file)
+	data, err := os.ReadFile(file)
 	if err != nil {
 		return nil, err
 	}
-	defer func() {
-		err := fp.Close()
-		if err != nil {
-			slog.Error("Failed to close", "file", file, "err", err)
-		}
-	}()
+	return parseLines(strings.Split(string(data), "\n")), nil
+}
 
-	var timeLogs = []*TimeLog{}
-	regStartDate := regexp.MustCompile(`^## \d{8}_\d{6}`)
+// regHeading matches a time heading: "## 20250114_093000 ..." or "### 20250114_093000 ...".
+var regHeading = regexp.MustCompile(`^#{2,3} \d{8}_\d{6}`)
 
-	scanner := bufio.NewScanner(fp)
-	var prevTimeLog *TimeLog
-	for scanner.Scan() {
-		line := scanner.Text()
-		if !regStartDate.MatchString(line) {
+// regHours matches an hours token such as "4.5h" placed right after a tag.
+var regHours = regexp.MustCompile(`^\d+(\.\d+)?h$`)
+
+// parseLines turns the time headings of a log into time logs.
+// A heading that carries "TAG Nh" pairs counts those hours as they are.
+// A heading without hours lasts until the next heading.
+// A heading with neither tag nor title (lunch, end of day) only ends the previous one.
+func parseLines(lines []string) []*TimeLog {
+	timeLogs := []*TimeLog{}
+	var open *TimeLog
+	for _, line := range lines {
+		if !regHeading.MatchString(line) {
 			continue
 		}
-		timeLog, err := NewTimeLog(line)
+		logs, err := newTimeLogs(line)
 		if err != nil {
-			slog.Error("Failed to NewTimeLog", "line", line, "err", err)
+			slog.Error("Failed to parse heading", "line", line, "err", err)
 			continue
-			// return nil, err
 		}
-		// fmt.Printf("NEW: %+v\n", timeLog)
-		if prevTimeLog != nil {
-			prevTimeLog.Fix(timeLog)
-			// fmt.Printf("Fixed: %+v\n", prevTimeLog)
+		if open != nil {
+			open.Fix(logs[0])
+			open = nil
 		}
-		prevTimeLog = timeLog
-		timeLogs = append(timeLogs, timeLog)
+		if logs[0].Sec == 0 {
+			open = logs[0]
+		}
+		timeLogs = append(timeLogs, logs...)
 	}
-	var validTimeLogs = []*TimeLog{}
+	validTimeLogs := []*TimeLog{}
 	for _, l := range timeLogs {
 		if !l.Valid() {
 			continue
 		}
 		validTimeLogs = append(validTimeLogs, l)
 	}
-	return validTimeLogs, nil
+	return validTimeLogs
 }
 
-func NewTimeLog(line string) (*TimeLog, error) {
-	// fmt.Printf("==> Parsing line: %s\n", line)
-
-	tl := &TimeLog{}
-	//12345678901234567890123456789
-	//- 20220221_100000 COM hoge
-	parts := strings.Split(line, " ")
+// newTimeLogs parses one heading. It returns one log per "TAG Nh" pair, or a single
+// open-ended log when the heading has no hours.
+func newTimeLogs(line string) ([]*TimeLog, error) {
+	parts := strings.Fields(line)
 	startStr := parts[1]
-	timeFormat := "20060102_150405"
-	startTime, err := time.Parse(timeFormat, startStr)
+	startTime, err := time.Parse("20060102_150405", startStr)
 	if err != nil {
-		return tl, err
+		return nil, err
 	}
-	tl.Date = fmt.Sprintf("%s-%s-%s", startStr[0:4], startStr[4:6], startStr[6:8])
-	sec := startTime.Unix()
-	tl.Start = sec
-
-	if len(parts) > 2 {
-		tl.Tag = parts[2]
-		if len(parts) > 3 {
-			tl.Title = strings.Join(parts[3:], " ")
+	base := TimeLog{Start: startTime.Unix()}
+	base.Date = fmt.Sprintf("%s-%s-%s", startStr[0:4], startStr[4:6], startStr[6:8])
+	rest := parts[2:]
+	var hourly []*TimeLog
+	for len(rest) >= 2 && regHours.MatchString(rest[1]) {
+		hours, err := strconv.ParseFloat(strings.TrimSuffix(rest[1], "h"), 64)
+		if err != nil {
+			return nil, err
 		}
+		l := base
+		l.Tag = rest[0]
+		l.Sec = int64(hours * 3600)
+		l.End = l.Start + l.Sec
+		hourly = append(hourly, &l)
+		rest = rest[2:]
 	}
-	return tl, nil
+	title := strings.Join(rest, " ")
+	if len(hourly) > 0 {
+		for _, l := range hourly {
+			l.Title = title
+		}
+		return hourly, nil
+	}
+	if len(rest) > 0 {
+		base.Tag = rest[0]
+		base.Title = strings.Join(rest[1:], " ")
+	}
+	return []*TimeLog{&base}, nil
 }
 
 func (t *TimeLog) Fix(tl *TimeLog) {
