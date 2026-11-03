@@ -20,7 +20,8 @@ Example:
 ## 20250114_103000 MTG Team standup
 ```
 
-Each entry's duration is calculated as the time difference between consecutive entries. Logs are aggregated by:
+`###` headings may carry `TAG Nh` pairs before the title (`### 20250114_093000 DEV 1.5h MTG 0.5h Title`);
+those hours count as written. Otherwise an entry's duration is the time difference between consecutive entries. Logs are aggregated by:
 - **Tag only**: Groups all entries with the same tag per date
 - **Tag + Title**: Groups entries with same tag and title per date
 
@@ -68,22 +69,27 @@ make tag arg="--count 10 --tag DEV"
 
 ## Code Architecture
 
-### Core Components
+### Packages
 
-1. **`cmd/analyzer/analyzer.go`** - Log parsing and aggregation engine
-   - `Analyze()`: Entry point that finds files, parses logs, and generates summaries
-   - `parseFile()`: Parses individual Markdown files using regex `^## \d{8}_\d{6}`
-   - `NewTimeLog()`: Converts log line into structured `TimeLog` with Unix timestamps
-   - `TimeLog.Fix()`: Calculates duration by setting end time from next entry's start
-   - `NewResult()`: Aggregates logs into `TagSummaryLog` and `TagTitleSummaryLog`
+- `cmd/` - Cobra commands (`root`, `latest`, `tag`, `gen`): args, config, output
+- `internal/timelog/` - The time heading format (`### 20261030_130000 ALPHA 1h Title`).
+  `Parse` and `Heading.String` are the only code that reads or writes it;
+  `gen` writes through it and `summary` reads through it
+- `internal/summary/` - Reads log files and aggregates by tag and tag+title
+  - `Analyze()`: Entry point that finds files, parses logs, and generates summaries
+  - `TimeLog.Fix()`: Calculates duration by setting end time from next entry's start
+  - `NewResult()`: Aggregates logs into `TagSummaryLog` and `TagTitleSummaryLog`
+- `internal/gen/` - Writes the daily headings from Claude Code sessions, rec's calls and tasks
 
-2. **`cmd/root.go`** - Cobra CLI root command (defaults to running `latest`)
+### Commands
 
-3. **`cmd/latest.go`** - Shows most recent N time log entries
+1. **`cmd/root.go`** - Cobra CLI root command (defaults to running `latest`)
+
+2. **`cmd/latest.go`** - Shows most recent N time log entries
    - Default: 1 entry from last 2 files
    - Flags: `--count` (number of dates to show)
 
-4. **`cmd/tag.go`** - Shows aggregated summaries by tag or tag+title
+3. **`cmd/tag.go`** - Shows aggregated summaries by tag or tag+title
    - Default: 14 days from last 2 files
    - Flags: `--count` (days), `--tag` (filter by tag)
 
@@ -93,8 +99,8 @@ make tag arg="--count 10 --tag DEV"
 Markdown files (~/pattern/*.md)
   ↓ findRecentryFiles() - glob pattern matching
   ↓ parseFiles() - iterate files
-  ↓ parseFile() - regex parsing per file
-  ↓ NewTimeLog() - create TimeLog structs
+  ↓ parseFile() - timelog.Parse per line
+  ↓ newTimeLogs() - create TimeLog structs
   ↓ TimeLog.Fix() - calculate durations
   ↓ filter by Valid() - remove incomplete logs
   ↓ NewResult() - aggregate into summaries
@@ -175,9 +181,9 @@ func init() {
 ```
 3. Add Makefile target for convenience
 
-### Extending Analyzer
+### Extending Summary
 
-The analyzer follows a functional pipeline pattern:
+The summary package follows a functional pipeline pattern:
 - Add new summary types by implementing `LogBaser` interface
 - New aggregation logic goes in `NewResult()`
 - Output formatting via `String()` method on summary types

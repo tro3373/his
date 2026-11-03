@@ -4,8 +4,7 @@ import (
 	"log"
 
 	"github.com/spf13/cobra"
-	"github.com/tro3373/his/cmd/analyzer"
-	"github.com/tro3373/his/cmd/util"
+	"github.com/tro3373/his/internal/summary"
 )
 
 // tagCmd represents the tag command
@@ -41,13 +40,13 @@ func init() {
 
 func tag(args []string) error {
 
-	tag, outputCount := util.ParseTagArgs(args, 14)
+	tag, outputCount := parseTagArgs(args, 14)
 
 	pattern, err := getDefaultFindFilePattern()
 	if err != nil {
 		return err
 	}
-	result, err := analyzer.Analyze(pattern, 2) // always load 2 file
+	result, err := summary.Analyze(pattern, 2) // always load 2 file
 	if err != nil {
 		return err
 	}

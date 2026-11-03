@@ -10,8 +10,8 @@ import (
 	"time"
 )
 
-// TestRun drives one log end to end: sessions, a recording and tasks in, the
-// month's log out.
+// TestRun drives two logs end to end: sessions, recordings and tasks in, the
+// month's logs out.
 func TestRun(t *testing.T) {
 	root := t.TempDir()
 	cwd := filepath.Join(root, "src/acme/api/backend-worktree/feature-x")
@@ -53,78 +53,109 @@ func TestRun(t *testing.T) {
 		},
 	}
 	now := time.Date(2026, 11, 2, 9, 0, 0, 0, jst)
-	var out bytes.Buffer
-	if err := Run(cfg, now, time.Date(2026, 10, 30, 0, 0, 0, 0, jst), &out); err != nil {
+	date := time.Date(2026, 10, 30, 0, 0, 0, 0, jst)
+	if err := Run(cfg, now, date, io.Discard); err != nil {
 		t.Fatal(err)
-	}
-	got, err := os.ReadFile(filepath.Join(root, "notes/work/2026/2026-10-01-log.md"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := strings.Join([]string{
-		"# Log", "", "## Head", "", "## 2026-10-29 (木)", "### 20261029_100000 ALPHA", "",
-		"## 2026-10-30 (金)",
-		// Only one activity in the morning, then nothing until 13:10: a break from 10:30.
-		"### 20261030_100000 ALPHA 0.5h",
-		"### 20261030_103000",
-		"### 20261030_130000 ALPHA 1h GAMMA 1h",
-		"- [ ] [20261030-140500_y](tasks/app/20261030-140500_y/index.md)",
-		"### 20261030_150000 ALPHA 1h 定例",
-		"### 20261030_160000 ALPHA 2h",
-		"- [x] [20261029-100000_x](tasks/backend/20261029-100000_x/index.md)",
-		"### 20261030_180000",
-	}, "\n") + "\n"
-	if string(got) != want {
-		t.Errorf("work log =\n%s\nwant\n%s", got, want)
 	}
 
-	// The Meet call and the notes task, which no session worked in, go to the default personal log.
-	personal, err := os.ReadFile(filepath.Join(root, "notes/personal/2026/2026-10-30-log.md"))
-	if err != nil {
-		t.Fatal(err)
+	tests := []struct {
+		name string
+		path string
+		want []string
+	}{
+		{
+			name: "作業ログは月のログに追記し_昼休み以外の空白を休憩にし_会議とタスクを区間に置くこと",
+			path: "notes/work/2026/2026-10-01-log.md",
+			want: []string{
+				"# Log", "", "## Head", "", "## 2026-10-29 (木)", "### 20261029_100000 ALPHA", "",
+				"## 2026-10-30 (金)",
+				// Only one activity in the morning, then nothing until 13:10: a break from 10:30.
+				"### 20261030_100000 ALPHA 0.5h",
+				"### 20261030_103000",
+				"### 20261030_130000 ALPHA 1h GAMMA 1h",
+				"- [ ] [20261030-140500_y](tasks/app/20261030-140500_y/index.md)",
+				"### 20261030_150000 ALPHA 1h 定例",
+				"### 20261030_160000 ALPHA 2h",
+				"- [x] [20261029-100000_x](tasks/backend/20261029-100000_x/index.md)",
+				"### 20261030_180000",
+			},
+		},
+		{
+			name: "どのセッションも作業していない通話とタスクは既定のログに書くこと",
+			path: "notes/personal/2026/2026-10-30-log.md",
+			want: []string{
+				"# Log", "", "## 2026-10-30 (金)",
+				"### 20261030_110000 MTG 0.5h 私用",
+				"- [ ] [20261030-090000_z](tasks/notes/20261030-090000_z/index.md)",
+				"### 20261030_113000",
+			},
+		},
 	}
-	wantPersonal := strings.Join([]string{
-		"# Log", "", "## 2026-10-30 (金)",
-		"### 20261030_110000 MTG 0.5h 私用",
-		"- [ ] [20261030-090000_z](tasks/notes/20261030-090000_z/index.md)",
-		"### 20261030_113000",
-	}, "\n") + "\n"
-	if string(personal) != wantPersonal {
-		t.Errorf("personal log =\n%s\nwant\n%s", personal, wantPersonal)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := os.ReadFile(filepath.Join(root, tt.path))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if want := lines(tt.want...); string(got) != want {
+				t.Errorf("%s =\n%s\nwant\n%s", tt.path, got, want)
+			}
+		})
 	}
 
 	var again bytes.Buffer
-	if err := Run(cfg, now, time.Date(2026, 10, 30, 0, 0, 0, 0, jst), &again); err != nil {
+	if err := Run(cfg, now, date, &again); err != nil {
 		t.Fatal(err)
 	}
 	if again.Len() != 0 {
-		t.Errorf("second run changed the log: %s", again.String())
+		t.Errorf("再実行でログを変えないこと: %s", again.String())
 	}
 }
 
-func TestRunToday(t *testing.T) {
-	root := t.TempDir()
-	cwd := filepath.Join(root, "notes")
-	write(t, filepath.Join(root, "work/projects/p/s.jsonl"),
-		`{"type":"user","timestamp":"2026-11-01T01:20:00Z","cwd":"`+cwd+`"}`+"\n"+
-			`{"type":"user","timestamp":"2026-11-02T01:20:00Z","cwd":"`+cwd+`"}`+"\n")
-	cfg := Config{
-		StoreRoot: cwd,
-		Sessions:  []string{filepath.Join(root, "work/projects")},
-		Lunch:     noon,
-		Logs:      []LogConfig{{Name: "work", Dir: filepath.Join(root, "notes/work"), Default: true}},
-	}
+func TestRun_target(t *testing.T) {
 	now := time.Date(2026, 11, 2, 15, 0, 0, 0, jst)
-	if err := Run(cfg, now, now, io.Discard); err != nil {
-		t.Fatal(err)
+	yesterday := "### 20261101_100000 notes 1h"
+	today := "### 20261102_100000 notes 1h"
+	tests := []struct {
+		name    string
+		target  time.Time
+		want    []string
+		notWant []string
+	}{
+		{name: "指定が無ければ昨日までを書き_今日は書かないこと", want: []string{yesterday}, notWant: []string{today}},
+		{name: "today の指定で過去の足りない日と今日を書くこと", target: now, want: []string{yesterday, today}},
+		{name: "日付の指定でその日だけを書くこと", target: time.Date(2026, 11, 1, 0, 0, 0, 0, jst), want: []string{yesterday}, notWant: []string{today}},
 	}
-	got, err := os.ReadFile(filepath.Join(root, "notes/work/2026/2026-11-01-log.md"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, want := range []string{"### 20261101_100000 notes 1h", "### 20261102_100000 notes 1h"} {
-		if !strings.Contains(string(got), want) {
-			t.Errorf("today の指定で過去の足りない日と今日を書くこと: %q is missing in\n%s", want, got)
-		}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root := t.TempDir()
+			cwd := filepath.Join(root, "notes")
+			write(t, filepath.Join(root, "work/projects/p/s.jsonl"),
+				`{"type":"user","timestamp":"2026-11-01T01:20:00Z","cwd":"`+cwd+`"}`+"\n"+
+					`{"type":"user","timestamp":"2026-11-02T01:20:00Z","cwd":"`+cwd+`"}`+"\n")
+			cfg := Config{
+				StoreRoot: cwd,
+				Sessions:  []string{filepath.Join(root, "work/projects")},
+				Lunch:     noon,
+				Logs:      []LogConfig{{Name: "work", Dir: filepath.Join(root, "notes/work"), Default: true}},
+			}
+			if err := Run(cfg, now, tt.target, io.Discard); err != nil {
+				t.Fatal(err)
+			}
+			got, err := os.ReadFile(filepath.Join(root, "notes/work/2026/2026-11-01-log.md"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, w := range tt.want {
+				if !strings.Contains(string(got), w) {
+					t.Errorf("%q is missing in\n%s", w, got)
+				}
+			}
+			for _, w := range tt.notWant {
+				if strings.Contains(string(got), w) {
+					t.Errorf("%q should not be in\n%s", w, got)
+				}
+			}
+		})
 	}
 }

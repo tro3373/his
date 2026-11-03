@@ -10,18 +10,19 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"slices"
 	"strings"
 	"time"
 )
 
 // TagResolver finds the project of a working directory and caches the answer.
 type TagResolver struct {
-	cache map[string][2]string
+	cache map[string]resolved
 }
 
+type resolved struct{ tag, repo string }
+
 // NewTagResolver returns an empty resolver.
-func NewTagResolver() *TagResolver { return &TagResolver{cache: map[string][2]string{}} }
+func NewTagResolver() *TagResolver { return &TagResolver{cache: map[string]resolved{}} }
 
 var regJobTag = regexp.MustCompile(`^\s*export\s+JOB_TAG=["']?([^"'\s]+)`)
 
@@ -32,7 +33,7 @@ var regJobTag = regexp.MustCompile(`^\s*export\s+JOB_TAG=["']?([^"'\s]+)`)
 // Without a JOB_TAG, the repository name is the tag.
 func (r *TagResolver) Resolve(cwd string) (string, string) {
 	if v, ok := r.cache[cwd]; ok {
-		return v[0], v[1]
+		return v.tag, v.repo
 	}
 	repo := repoName(cwd)
 	tag := repo
@@ -45,7 +46,7 @@ func (r *TagResolver) Resolve(cwd string) (string, string) {
 			break
 		}
 	}
-	r.cache[cwd] = [2]string{tag, repo}
+	r.cache[cwd] = resolved{tag, repo}
 	return tag, repo
 }
 
@@ -69,22 +70,27 @@ func readJobTag(path string) (string, bool) {
 func repoName(cwd string) string {
 	for dir := cwd; dir != filepath.Dir(dir); dir = filepath.Dir(dir) {
 		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
-			return worktreeRepo(dir)
+			return repoAt(dir)
 		}
 	}
 	for dir := cwd; dir != filepath.Dir(dir); dir = filepath.Dir(dir) {
-		if before, ok := strings.CutSuffix(filepath.Base(filepath.Dir(dir)), "-worktree"); ok {
-			return before
+		if repo, ok := worktreeOf(dir); ok {
+			return repo
 		}
 	}
 	return filepath.Base(cwd)
 }
 
-func worktreeRepo(top string) string {
-	if before, ok := strings.CutSuffix(filepath.Base(filepath.Dir(top)), "-worktree"); ok {
-		return before
+func repoAt(top string) string {
+	if repo, ok := worktreeOf(top); ok {
+		return repo
 	}
 	return filepath.Base(top)
+}
+
+// worktreeOf returns <repo> when dir is "<repo>-worktree/<name>".
+func worktreeOf(dir string) (string, bool) {
+	return strings.CutSuffix(filepath.Base(filepath.Dir(dir)), "-worktree")
 }
 
 type sessionEntry struct {
@@ -171,10 +177,6 @@ func parseSessionLine(line []byte, since time.Time, r *TagResolver) (Activity, b
 	}
 	tag, repo := r.Resolve(e.Cwd)
 	return Activity{At: at, Cwd: e.Cwd, Tag: tag, Repo: repo, Branch: e.GitBranch}, true
-}
-
-func sortActivities(acts []Activity) {
-	slices.SortFunc(acts, func(a, b Activity) int { return a.At.Compare(b.At) })
 }
 
 // Recording is a call recorded by rec.
