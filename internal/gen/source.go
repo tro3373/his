@@ -10,7 +10,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"slices"
 	"strings"
 	"time"
 )
@@ -171,10 +170,6 @@ func parseSessionLine(line []byte, since time.Time, r *TagResolver) (Activity, b
 	}
 	tag, repo := r.Resolve(e.Cwd)
 	return Activity{At: at, Cwd: e.Cwd, Tag: tag, Repo: repo, Branch: e.GitBranch}, true
-}
-
-func sortActivities(acts []Activity) {
-	slices.SortFunc(acts, func(a, b Activity) int { return a.At.Compare(b.At) })
 }
 
 // Recording is a call recorded by rec.

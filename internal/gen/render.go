@@ -86,14 +86,16 @@ func MergeDay(content string, date time.Time, block []string, links []Link) stri
 	if !found {
 		return join(insertSection(ls, key, append([]string{DayHeader(date)}, block...)))
 	}
-	section := ls[head+1 : end]
-	merged := mergeBlock(section, block, links)
-	if hasTimeHeading(section) {
-		merged = syncLinks(section, links)
-	}
 	out := append([]string{}, ls[:head+1]...)
-	out = append(out, merged...)
+	out = append(out, mergeSection(ls[head+1:end], block, links)...)
 	return join(append(out, ls[end:]...))
+}
+
+func mergeSection(section, block []string, links []Link) []string {
+	if hasTimeHeading(section) {
+		return syncLinks(section, links)
+	}
+	return mergeBlock(section, block, links)
 }
 
 func join(ls []string) string { return strings.Join(ls, "\n") + "\n" }
@@ -186,15 +188,6 @@ func childLines(ls []string) int {
 }
 
 func checked(line string) string { return strings.Replace(line, "- [ ] ", "- [x] ", 1) }
-
-func linksAny(line string, links []Link) bool {
-	for _, k := range links {
-		if strings.Contains(line, k.target()) {
-			return true
-		}
-	}
-	return false
-}
 
 // syncLinks checks finished tasks and appends the links the section lacks.
 // They go after the last content of the day: before the end-of-day heading when

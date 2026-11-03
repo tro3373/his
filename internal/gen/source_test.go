@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"testing"
 	"time"
 )
@@ -70,7 +71,7 @@ func TestReadActivities(t *testing.T) {
 		{At: time.Date(2026, 10, 30, 1, 15, 0, 0, time.UTC), Tag: "ALPHA", Repo: "backend", Branch: "feature/x"},
 		{At: time.Date(2026, 10, 30, 2, 0, 0, 0, time.UTC), Tag: "ALPHA", Repo: "backend", Branch: "feature/x"},
 	}
-	sortActivities(got)
+	slices.SortFunc(got, func(a, b Activity) int { return a.At.Compare(b.At) })
 	if len(got) != len(want) {
 		t.Fatalf("ReadActivities() = %+v, want %+v", got, want)
 	}
