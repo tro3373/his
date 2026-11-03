@@ -4,20 +4,17 @@
 # day is planned and rendered from scratch, and copies of the real logs, so the
 # merge into existing days runs.
 # Usage: scripts/gen-equiv.sh [base-ref]   (default: HEAD)
-set -euo pipefail
 
-base=${1:-HEAD}
-repo=$(git rev-parse --show-toplevel)
-work=$(mktemp -d)
-trap 'trash "$work"' EXIT
-
-git -C "$repo" worktree add --quiet --detach "$work/base-src" "$base"
-(cd "$work/base-src" && go build -o "$work/his-base" .)
-git -C "$repo" worktree remove --force "$work/base-src"
-(cd "$repo" && go build -o "$work/his-new" .)
+build() {
+  local repo=$1 base=$2 work=$3
+  git -C "$repo" worktree add --quiet --detach "$work/base-src" "$base"
+  (cd "$work/base-src" && go build -o "$work/his-base" .)
+  git -C "$repo" worktree remove --force "$work/base-src"
+  (cd "$repo" && go build -o "$work/his-new" .)
+}
 
 run() {
-  local bin=$1 pass=$2
+  local work=$1 bin=$2 pass=$3
   local out=$work/$pass/$bin
   mkdir -p "$out"
   yq -o yaml ".gen.logs[] |= (.dir as \$d | .dir = \"$out/\" + (\$d | split(\"/\") | .[-1]))" ~/.his >"$out.yaml"
@@ -30,10 +27,22 @@ run() {
   "$work/his-$bin" --config "$out.yaml" gen | sed "s#$out#X#" >"$out.log"
 }
 
-for pass in empty copy; do
-  run base "$pass"
-  run new "$pass"
-  diff -u "$work/$pass/base.log" "$work/$pass/new.log"
-  diff -r "$work/$pass/base" "$work/$pass/new"
-  echo "==> $pass: equivalent, $(wc -l <"$work/$pass/base.log") writes by both"
-done
+main() {
+  set -euo pipefail
+  local base=${1:-HEAD} repo work pass
+  repo=$(git rev-parse --show-toplevel)
+  work=$(mktemp -d)
+  # shellcheck disable=SC2064 # expand now: work is local and gone by EXIT
+  trap "trash '$work'" EXIT
+
+  build "$repo" "$base" "$work"
+  for pass in empty copy; do
+    run "$work" base "$pass"
+    run "$work" new "$pass"
+    diff -u "$work/$pass/base.log" "$work/$pass/new.log"
+    diff -r "$work/$pass/base" "$work/$pass/new"
+    echo "==> $pass: equivalent, $(wc -l <"$work/$pass/base.log") writes by both"
+  done
+}
+
+main "$@"
