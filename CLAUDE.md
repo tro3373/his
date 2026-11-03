@@ -70,7 +70,7 @@ make tag arg="--count 10 --tag DEV"
 
 ### Core Components
 
-1. **`cmd/analyzer/analyzer.go`** - Log parsing and aggregation engine
+1. **`internal/summary/summary.go`** - Log parsing and aggregation engine
    - `Analyze()`: Entry point that finds files, parses logs, and generates summaries
    - `parseFile()`: Parses individual Markdown files using regex `^## \d{8}_\d{6}`
    - `NewTimeLog()`: Converts log line into structured `TimeLog` with Unix timestamps
@@ -175,9 +175,9 @@ func init() {
 ```
 3. Add Makefile target for convenience
 
-### Extending Analyzer
+### Extending Summary
 
-The analyzer follows a functional pipeline pattern:
+The summary package follows a functional pipeline pattern:
 - Add new summary types by implementing `LogBaser` interface
 - New aggregation logic goes in `NewResult()`
 - Output formatting via `String()` method on summary types
