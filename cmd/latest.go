@@ -5,7 +5,6 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/tro3373/his/cmd/analyzer"
-	"github.com/tro3373/his/cmd/util"
 )
 
 // latestCmd represents the latest command
@@ -40,7 +39,7 @@ func init() {
 }
 
 func latest(args []string) error {
-	tag, outputCount := util.ParseTagArgs(args, 1)
+	tag, outputCount := parseTagArgs(args, 1)
 
 	pattern, err := getDefaultFindFilePattern()
 	if err != nil {
