@@ -43,6 +43,9 @@ make build-darwin-arm   # macOS Apple Silicon
 make build-windows-amd  # Windows amd64
 make build-android-arm  # Android ARM64
 
+# Install to $GOBIN
+make install
+
 # Run linting
 make lint
 

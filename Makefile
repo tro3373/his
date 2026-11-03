@@ -63,6 +63,9 @@ _build-%: clean lint
 			-ldflags="-s -w" \
 			-o $(dst) \
 			.
+install:
+	@echo "==> Go Installing" >&2
+	@go install -v -trimpath -ldflags="-s -w" .
 
 help:
 	@go run . --help
