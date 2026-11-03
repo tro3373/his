@@ -112,9 +112,27 @@ func TestMergeDay(t *testing.T) {
 }
 
 func TestNewMonthContent(t *testing.T) {
-	prev := lines("# Log", "", "## Time Management", "| a |", "", "## 2026-10-01 (木)", "### 20261001_091500 ALPHA")
-	want := lines("# Log", "", "## Time Management", "| a |", "")
-	if got := NewMonthContent(prev); got != want {
-		t.Errorf("NewMonthContent() =\n%q\nwant\n%q", got, want)
+	tests := []struct {
+		name string
+		prev string
+		want string
+	}{
+		{
+			name: "前月の最初の日より前を引き継ぐこと",
+			prev: lines("# Log", "", "## Time Management", "| a |", "", "## 2026-10-01 (木)", "### 20261001_091500 ALPHA"),
+			want: lines("# Log", "", "## Time Management", "| a |", ""),
+		},
+		{
+			name: "日の見出しが無ければ前月の内容をそのまま引き継ぐこと",
+			prev: lines("# Log", "", "## Time Management"),
+			want: lines("# Log", "", "## Time Management"),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := NewMonthContent(tt.prev); got != tt.want {
+				t.Errorf("NewMonthContent() =\n%q\nwant\n%q", got, tt.want)
+			}
+		})
 	}
 }

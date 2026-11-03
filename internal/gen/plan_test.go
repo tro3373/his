@@ -1,6 +1,7 @@
 package gen
 
 import (
+	"cmp"
 	"reflect"
 	"testing"
 	"time"
@@ -20,6 +21,7 @@ func TestPlanDay(t *testing.T) {
 	date := at(0, 0)
 	tests := []struct {
 		name  string
+		lunch Lunch // zero means noon
 		acts  []Activity
 		meets []Meeting
 		want  Day
@@ -136,13 +138,27 @@ func TestPlanDay(t *testing.T) {
 			ok: true,
 		},
 		{
+			name:  "設定した昼休みで日を区切ること",
+			lunch: Lunch{Start: Clock(11*time.Hour + 30*time.Minute), End: Clock(12*time.Hour + 30*time.Minute)},
+			acts:  []Activity{act("A", 10, 10), act("A", 11, 0), act("A", 12, 0), act("A", 12, 40), act("A", 13, 20)},
+			want: Day{
+				Segments: []Segment{
+					{Start: at(10, 0), Kind: KindWork, Hours: []TagHours{{"A", 6}}},
+					{Start: at(11, 30), Kind: KindBreak},
+					{Start: at(12, 30), Kind: KindWork, Hours: []TagHours{{"A", 2}}},
+				},
+				End: at(13, 0),
+			},
+			ok: true,
+		},
+		{
 			name: "活動も会議も無い日は書かないこと",
 			ok:   false,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, ok := PlanDay(date, noon, tt.acts, tt.meets)
+			got, ok := PlanDay(date, cmp.Or(tt.lunch, noon), tt.acts, tt.meets)
 			if ok != tt.ok {
 				t.Fatalf("PlanDay() ok = %v, want %v", ok, tt.ok)
 			}
@@ -188,23 +204,6 @@ func TestAllocateQuarters(t *testing.T) {
 				t.Errorf("allocateQuarters() = %+v, want %+v", got, tt.want)
 			}
 		})
-	}
-}
-
-func TestPlanDay_lunch(t *testing.T) {
-	lunch := Lunch{Start: Clock(11*time.Hour + 30*time.Minute), End: Clock(12*time.Hour + 30*time.Minute)}
-	acts := []Activity{act("A", 10, 10), act("A", 11, 0), act("A", 12, 0), act("A", 12, 40), act("A", 13, 20)}
-	want := Day{
-		Segments: []Segment{
-			{Start: at(10, 0), Kind: KindWork, Hours: []TagHours{{"A", 6}}},
-			{Start: at(11, 30), Kind: KindBreak},
-			{Start: at(12, 30), Kind: KindWork, Hours: []TagHours{{"A", 2}}},
-		},
-		End: at(13, 0),
-	}
-	got, ok := PlanDay(at(0, 0), lunch, acts, nil)
-	if !ok || !reflect.DeepEqual(got, want) {
-		t.Errorf("設定した昼休みで日を区切ること: PlanDay() =\n%+v, %v\nwant\n%+v", got, ok, want)
 	}
 }
 
