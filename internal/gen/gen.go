@@ -148,6 +148,11 @@ func logOf(logs []LogConfig, cwd string) int {
 			}
 		}
 	}
+	return defaultLog(logs)
+}
+
+// defaultLog is the index of the default log, or -1.
+func defaultLog(logs []LogConfig) int {
 	return slices.IndexFunc(logs, func(l LogConfig) bool { return l.Default })
 }
 
@@ -158,7 +163,7 @@ func midnight(t time.Time) time.Time {
 func between(acts []Activity, from, to time.Time) []Activity {
 	var out []Activity
 	for _, a := range acts {
-		if a.At.Before(from) || !a.At.Before(to) {
+		if !within(a.At, from, to) {
 			continue
 		}
 		out = append(out, a)
@@ -169,7 +174,7 @@ func between(acts []Activity, from, to time.Time) []Activity {
 // taskOwners decides which log a repository's tasks go to: the first log whose
 // sessions worked in it, else the default log. -1 means no log.
 func taskOwners(logs []LogConfig, acts [][]Activity) func(repo string) int {
-	fallback := slices.IndexFunc(logs, func(l LogConfig) bool { return l.Default })
+	fallback := defaultLog(logs)
 	return func(repo string) int {
 		for i := range logs {
 			if slices.ContainsFunc(acts[i], func(a Activity) bool { return a.Repo == repo }) {
@@ -186,7 +191,7 @@ func meetingsOf(recs []Recording, apps []string, date time.Time, dayActs []Activ
 	var out []Meeting
 	next := date.AddDate(0, 0, 1)
 	for _, r := range recs {
-		if !slices.Contains(apps, r.App) || r.Start.Before(date) || !r.Start.Before(next) {
+		if !slices.Contains(apps, r.App) || !within(r.Start, date, next) {
 			continue
 		}
 		tag := dominantTag(between(dayActs, r.Start.Add(-meetingTagWindow), r.End.Add(meetingTagWindow)))
@@ -221,7 +226,7 @@ func linksOf(tasks []Task, day Day, dayActs []Activity, date time.Time, ownTask 
 		worked := t.Branch != "" && slices.ContainsFunc(dayActs, func(a Activity) bool {
 			return a.Repo == t.Repo && a.Branch == t.Branch
 		})
-		created := !t.Created.Before(date) && t.Created.Before(next) && ownTask(t)
+		created := within(t.Created, date, next) && ownTask(t)
 		if worked || created {
 			picked = append(picked, t)
 		}
@@ -272,7 +277,7 @@ func segmentIndex(day Day, at time.Time) int {
 		if i+1 < len(day.Segments) {
 			end = day.Segments[i+1].Start
 		}
-		if s.Kind != KindBreak && !at.Before(s.Start) && at.Before(end) {
+		if s.Kind != KindBreak && within(at, s.Start, end) {
 			return i
 		}
 	}

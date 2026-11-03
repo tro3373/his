@@ -91,10 +91,10 @@ func PlanDay(date time.Time, lunch Lunch, acts []Activity, meets []Meeting) (Day
 	if len(acts) == 0 && len(meets) == 0 {
 		return Day{}, false
 	}
-	midnight := time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, date.Location())
-	p := dayPlan{lunch0: midnight.Add(time.Duration(lunch.Start)), lunch1: midnight.Add(time.Duration(lunch.End))}
+	day0 := midnight(date)
+	p := dayPlan{lunch0: day0.Add(time.Duration(lunch.Start)), lunch1: day0.Add(time.Duration(lunch.End))}
 	start, end := span(acts, meets, date.Location())
-	if !start.Before(p.lunch0) && start.Before(p.lunch1) {
+	if within(start, p.lunch0, p.lunch1) {
 		start = p.lunch1
 	}
 	if end.After(p.lunch0) && !end.After(p.lunch1) && start.Before(p.lunch0) {
@@ -289,7 +289,7 @@ func binActivities(acts []Activity, lunch0, lunch1 time.Time) map[time.Time][]st
 	bins := map[time.Time][]string{}
 	for _, a := range acts {
 		at := a.At.In(lunch0.Location())
-		if !at.Before(lunch0) && at.Before(lunch1) {
+		if within(at, lunch0, lunch1) {
 			continue
 		}
 		b := at.Truncate(binSize)
@@ -304,7 +304,7 @@ func binActivities(acts []Activity, lunch0, lunch1 time.Time) map[time.Time][]st
 func weigh(bins map[time.Time][]string, from, to time.Time) map[string]float64 {
 	w := map[string]float64{}
 	for b, tags := range bins {
-		if b.Before(from) || !b.Before(to) {
+		if !within(b, from, to) {
 			continue
 		}
 		for _, tag := range tags {
@@ -358,6 +358,9 @@ func allocateQuarters(quarters int, weights map[string]float64) []TagHours {
 	})
 	return out
 }
+
+// within reports whether t is in [from, to).
+func within(t, from, to time.Time) bool { return !t.Before(from) && t.Before(to) }
 
 func maxTime(a, b time.Time) time.Time {
 	if a.After(b) {
