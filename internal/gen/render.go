@@ -3,9 +3,10 @@ package gen
 import (
 	"fmt"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
+
+	"github.com/tro3373/his/internal/timelog"
 )
 
 // Link is a task to list under a segment of the day.
@@ -27,8 +28,6 @@ func (l Link) Line() string {
 
 func (l Link) target() string { return "](" + l.Path + ")" }
 
-const headingTime = "20060102_150405"
-
 // RenderDay renders the time headings of the day with each link under its segment.
 func RenderDay(d Day, links []Link) []string {
 	var out []string
@@ -40,18 +39,15 @@ func RenderDay(d Day, links []Link) []string {
 			}
 		}
 	}
-	return append(out, "### "+d.End.Format(headingTime))
+	return append(out, timelog.Heading{Start: d.End}.String())
 }
 
 func heading(s Segment) string {
-	parts := []string{"###", s.Start.Format(headingTime)}
-	for _, h := range s.Hours {
-		parts = append(parts, h.Tag, strconv.FormatFloat(float64(h.Quarters)/4, 'f', -1, 64)+"h")
+	h := timelog.Heading{Start: s.Start, Text: s.Title}
+	for _, th := range s.Hours {
+		h.Hours = append(h.Hours, timelog.TagHours{Tag: th.Tag, Hours: float64(th.Quarters) / 4})
 	}
-	if s.Title != "" {
-		parts = append(parts, s.Title)
-	}
-	return strings.Join(parts, " ")
+	return h.String()
 }
 
 var weekdays = [...]string{"日", "月", "火", "水", "木", "金", "土"}
@@ -61,12 +57,7 @@ func DayHeader(date time.Time) string {
 	return fmt.Sprintf("## %s (%s)", date.Format("2006-01-02"), weekdays[date.Weekday()])
 }
 
-var (
-	regDayHeader   = regexp.MustCompile(`^## (\d{4}-\d{2}-\d{2})`)
-	regTimeHeading = regexp.MustCompile(`^#{2,3} \d{8}_\d{6}`)
-	// regEndHeading is a time heading with nothing after it: lunch or the end of the day.
-	regEndHeading = regexp.MustCompile(`^#{2,3} \d{8}_\d{6}\s*$`)
-)
+var regDayHeader = regexp.MustCompile(`^## (\d{4}-\d{2}-\d{2})`)
 
 // MergeDay puts the day into the log content.
 //   - No section for the day: one is created in date order with block.
@@ -141,7 +132,7 @@ func insertSection(ls []string, key string, section []string) []string {
 
 func hasTimeHeading(section []string) bool {
 	for _, l := range section {
-		if regTimeHeading.MatchString(l) {
+		if timelog.IsHeading(l) {
 			return true
 		}
 	}
@@ -209,7 +200,7 @@ func syncLinks(section []string, links []Link) []string {
 	for at > 0 && strings.TrimSpace(out[at-1]) == "" {
 		at--
 	}
-	if at > 0 && regEndHeading.MatchString(out[at-1]) {
+	if at > 0 && timelog.IsEnd(out[at-1]) {
 		at--
 	}
 	for at > 0 && strings.TrimSpace(out[at-1]) == "" {
