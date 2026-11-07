@@ -14,13 +14,15 @@ import (
 )
 
 var genCmd = &cobra.Command{
-	Use:   "gen [YYYY-MM-DD|today]",
+	Use:   "gen [YYYY-MM-DD]",
 	Short: "Write the daily time headings from Claude Code sessions and recorded calls",
 	Long: `Write the daily time headings of each log under the "gen" section of the config.
 
-Without an argument, fills the last 30 days up to yesterday that are not written yet.
-With today, fills those days and today. Run it when the day ends:
-today's headings are written once, and later runs only add task links.
+Without an argument, writes each log from its newest day that already has a
+time heading through today, or from 30 days back when it has none.
+Older days are not touched.
+A block nobody edited by hand is rewritten on every run;
+a hand-edited day only gets task links.
 With a date, does that day only.
 
 Config (~/.his):
@@ -72,12 +74,9 @@ func parseTarget(args []string, now time.Time) (time.Time, error) {
 	if len(args) == 0 {
 		return time.Time{}, nil
 	}
-	if args[0] == "today" {
-		return now, nil
-	}
 	t, err := time.ParseInLocation(time.DateOnly, args[0], now.Location())
 	if err != nil {
-		return time.Time{}, fmt.Errorf("date must be YYYY-MM-DD or today: %w", err)
+		return time.Time{}, fmt.Errorf("date must be YYYY-MM-DD: %w", err)
 	}
 	return t, nil
 }

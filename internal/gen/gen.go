@@ -72,13 +72,17 @@ const catchUpDays = 30
 // meetingTagWindow is how far around a call the session activity decides its project.
 const meetingTagWindow = 30 * time.Minute
 
-// Run writes the days of every log; datesOf tells which.
-// A day's headings are written once, so today written half way keeps its
-// headings: the rest of the day only adds task links.
+// Run writes the days of every log; logDates tells which.
+// A day nobody edited by hand is rewritten, a hand-edited one only gets task links.
+// A zero target writes each log from its newest written day through today.
+// Any other target is that day only.
 func Run(cfg Config, now, target time.Time, w io.Writer) error {
 	loc := now.Location()
-	dates := datesOf(midnight(now), target)
-	since := dates[0]
+	today := midnight(now)
+	since := today.AddDate(0, 0, -catchUpDays)
+	if !target.IsZero() {
+		since = midnight(target)
+	}
 
 	tasks, err := ReadTasks(cfg.StoreRoot, loc)
 	if err != nil {
@@ -103,8 +107,15 @@ func Run(cfg Config, now, target time.Time, w io.Writer) error {
 	}
 	owner := taskOwners(cfg.Logs, acts)
 
-	for _, d := range dates {
-		for i, l := range cfg.Logs {
+	for i, l := range cfg.Logs {
+		dates := []time.Time{since}
+		if target.IsZero() {
+			dates, err = logDates(l.Dir, today)
+			if err != nil {
+				return err
+			}
+		}
+		for _, d := range dates {
 			dayActs := between(acts[i], d, d.AddDate(0, 0, 1))
 			meets := meetingsOf(recs, l.Apps, d, dayActs)
 			day, ok := PlanDay(d, cfg.Lunch, dayActs, meets)
@@ -121,22 +132,39 @@ func Run(cfg Config, now, target time.Time, w io.Writer) error {
 	return nil
 }
 
-// datesOf is the days a run writes.
-// A zero target is the last 30 days up to yesterday, as cron runs it.
-// Today is those days and today, so a run at the end of the day leaves no gap.
-// Any other target is that day only.
-func datesOf(today, target time.Time) []time.Time {
-	if !target.IsZero() && !midnight(target).Equal(today) {
-		return []time.Time{midnight(target)}
+// logDates is the days a run without a date writes to the log in dir:
+// from the newest day whose section already has a time heading through today.
+// With no such day within catchUpDays, it starts catchUpDays back.
+// Older days are never touched: their session logs may be gone already.
+func logDates(dir string, today time.Time) ([]time.Time, error) {
+	start := today.AddDate(0, 0, -catchUpDays)
+	for i := 0; i <= catchUpDays; i++ {
+		d := today.AddDate(0, 0, -i)
+		written, err := dayWritten(dir, d)
+		if err != nil {
+			return nil, err
+		}
+		if written {
+			start = d
+			break
+		}
 	}
 	var dates []time.Time
-	for i := catchUpDays; i >= 1; i-- {
-		dates = append(dates, today.AddDate(0, 0, -i))
+	for d := start; !d.After(today); d = d.AddDate(0, 0, 1) {
+		dates = append(dates, d)
 	}
-	if target.IsZero() {
-		return dates
+	return dates, nil
+}
+
+// dayWritten reports whether the log in dir has a time heading in date's section.
+func dayWritten(dir string, date time.Time) (bool, error) {
+	_, content, err := monthFile(dir, date)
+	if err != nil {
+		return false, err
 	}
-	return append(dates, today)
+	ls := strings.Split(content, "\n")
+	head, end, found := findSection(ls, date.Format("2006-01-02"))
+	return found && hasTimeHeading(ls[head+1:end]), nil
 }
 
 // logOf is the log whose roots hold cwd, else the default log, else -1.

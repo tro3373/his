@@ -116,23 +116,41 @@ func TestRun_target(t *testing.T) {
 	now := time.Date(2026, 11, 2, 15, 0, 0, 0, jst)
 	yesterday := "### 20261101_100000 notes 1h"
 	today := "### 20261102_100000 notes 1h"
+	older := "### 20261031_100000 notes 1h"
+	handWritten := "### 20261101_090000 hand"
 	tests := []struct {
 		name    string
 		target  time.Time
+		log     string
 		want    []string
 		notWant []string
 	}{
-		{name: "指定が無ければ昨日までを書き_今日は書かないこと", want: []string{yesterday}, notWant: []string{today}},
-		{name: "today の指定で過去の足りない日と今日を書くこと", target: now, want: []string{yesterday, today}},
-		{name: "日付の指定でその日だけを書くこと", target: time.Date(2026, 11, 1, 0, 0, 0, 0, jst), want: []string{yesterday}, notWant: []string{today}},
+		{name: "指定も書いた日も無ければ_30日の窓を今日まで書くこと", want: []string{older, yesterday, today}},
+		{
+			name:    "書いた日があれば_それより古い日は書かず_その日以降を今日まで書くこと",
+			log:     "# Log\n\n## 2026-11-01 (日)\n" + handWritten + "\n",
+			want:    []string{handWritten, today},
+			notWant: []string{older, yesterday},
+		},
+		{
+			name:    "日付の指定でその日だけを書くこと",
+			target:  time.Date(2026, 11, 1, 0, 0, 0, 0, jst),
+			want:    []string{yesterday},
+			notWant: []string{today},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			root := t.TempDir()
 			cwd := filepath.Join(root, "notes")
 			write(t, filepath.Join(root, "work/projects/p/s.jsonl"),
-				`{"type":"user","timestamp":"2026-11-01T01:20:00Z","cwd":"`+cwd+`"}`+"\n"+
+				`{"type":"user","timestamp":"2026-10-31T01:20:00Z","cwd":"`+cwd+`"}`+"\n"+
+					`{"type":"user","timestamp":"2026-11-01T01:20:00Z","cwd":"`+cwd+`"}`+"\n"+
 					`{"type":"user","timestamp":"2026-11-02T01:20:00Z","cwd":"`+cwd+`"}`+"\n")
+			logPath := filepath.Join(root, "notes/work/2026/2026-11-01-log.md")
+			if tt.log != "" {
+				write(t, logPath, tt.log)
+			}
 			cfg := Config{
 				StoreRoot: cwd,
 				Sessions:  []string{filepath.Join(root, "work/projects")},
@@ -142,17 +160,23 @@ func TestRun_target(t *testing.T) {
 			if err := Run(cfg, now, tt.target, io.Discard); err != nil {
 				t.Fatal(err)
 			}
-			got, err := os.ReadFile(filepath.Join(root, "notes/work/2026/2026-11-01-log.md"))
-			if err != nil {
-				t.Fatal(err)
+			var all strings.Builder
+			files, _ := filepath.Glob(filepath.Join(root, "notes/work/2026/*-log.md"))
+			for _, f := range files {
+				b, err := os.ReadFile(f)
+				if err != nil {
+					t.Fatal(err)
+				}
+				all.Write(b)
 			}
+			got := all.String()
 			for _, w := range tt.want {
-				if !strings.Contains(string(got), w) {
+				if !strings.Contains(got, w) {
 					t.Errorf("%q is missing in\n%s", w, got)
 				}
 			}
 			for _, w := range tt.notWant {
-				if strings.Contains(string(got), w) {
+				if strings.Contains(got, w) {
 					t.Errorf("%q should not be in\n%s", w, got)
 				}
 			}
