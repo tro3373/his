@@ -78,24 +78,30 @@ func markBlock(block []string) []string {
 	return append(out, blockEnd)
 }
 
-// ownedRegion finds the gen block of the section that nobody edited:
-// its begin marker, a later end marker, and lines between that still hash to the begin marker's hash.
-// It returns the indexes of the two markers.
-func ownedRegion(section []string) (begin, end int, ok bool) {
+// blockState is what a section holds of gen's marked block.
+type blockState int
+
+const (
+	blockNone   blockState = iota // no begin marker
+	blockOwned                    // markers around lines that still hash to the begin marker's hash
+	blockEdited                   // a begin marker whose lines changed, or that has no end marker
+)
+
+// findBlock looks for the gen block of the section.
+// For blockOwned it also returns the indexes of the two markers.
+func findBlock(section []string) (state blockState, begin, end int) {
 	for i, l := range section {
 		m := regBlockBegin.FindStringSubmatch(l)
 		if m == nil {
 			continue
 		}
 		j := indexOf(section[i+1:], blockEnd)
-		if j < 0 {
-			return 0, 0, false
+		if j < 0 || blockHash(section[i+1:i+1+j]) != m[1] {
+			return blockEdited, 0, 0
 		}
-		if blockHash(section[i+1:i+1+j]) == m[1] {
-			return i, i + 1 + j, true
-		}
+		return blockOwned, i, i + 1 + j
 	}
-	return 0, 0, false
+	return blockNone, 0, 0
 }
 
 func indexOf(ls []string, s string) int {
@@ -108,13 +114,15 @@ func indexOf(ls []string, s string) int {
 }
 
 // MergeDay puts the day into the log content.
-// block is written between marker lines that record its hash.
+// block is written between marker lines that record the hash of what is written,
+// after the section's links are moved into it.
 //   - No section for the day: one is created in date order with the marked block.
 //   - A section holding a gen block nobody edited (its lines still match the hash
 //     in its begin marker): the block is replaced in place with the new one.
-//   - A section with time headings but no such block (written by hand, or edited
-//     after gen): the headings stay, missing links are appended and finished tasks are checked.
-//   - A section without time headings: the marked block goes right under the day header.
+//   - A section with a gen block somebody edited, or with time headings and no
+//     block (written by hand): the headings stay, missing links are appended and
+//     finished tasks are checked.
+//   - A section with neither: the marked block goes right under the day header.
 //
 // Whenever a block is written, lines in the rest of the section that link the same
 // tasks are moved into it; other lines stay outside it.
@@ -125,25 +133,28 @@ func MergeDay(content string, date time.Time, block []string, links []Link) stri
 		ls = nil
 	}
 	key := date.Format("2006-01-02")
-	marked := markBlock(block)
 	head, end, found := findSection(ls, key)
 	if !found {
-		return join(insertSection(ls, key, append([]string{DayHeader(date)}, marked...)))
+		return join(insertSection(ls, key, append([]string{DayHeader(date)}, markBlock(block)...)))
 	}
 	out := append([]string{}, ls[:head+1]...)
-	out = append(out, mergeSection(ls[head+1:end], marked, links)...)
+	out = append(out, mergeSection(ls[head+1:end], block, links)...)
 	return join(append(out, ls[end:]...))
 }
 
-func mergeSection(section, marked []string, links []Link) []string {
-	if begin, end, ok := ownedRegion(section); ok {
+func mergeSection(section, block []string, links []Link) []string {
+	state, begin, end := findBlock(section)
+	switch state {
+	case blockOwned:
 		rest := append(append([]string{}, section[:begin]...), section[end+1:]...)
-		return mergeBlock(rest, begin, marked, links)
+		return mergeBlock(rest, begin, section[begin+1:end], block, links)
+	case blockEdited:
+		return syncLinks(section, links)
 	}
 	if hasTimeHeading(section) {
 		return syncLinks(section, links)
 	}
-	return mergeBlock(section, 0, marked, links)
+	return mergeBlock(section, 0, nil, block, links)
 }
 
 func join(ls []string) string { return strings.Join(ls, "\n") + "\n" }
@@ -196,23 +207,25 @@ func hasTimeHeading(section []string) bool {
 	return false
 }
 
-// mergeBlock inserts block into the section at index at and keeps the rest around it.
+// mergeBlock inserts block, marked, into the section at index at and keeps the rest around it.
 // A link the section already has keeps its line, hand-edited title and child
 // items included, and moves to its place in block; only its checkbox is updated.
-func mergeBlock(section []string, at int, block []string, links []Link) []string {
+// old is the block being replaced: its items are searched first, because gen
+// moved them there on an earlier run.
+func mergeBlock(section []string, at int, old, block []string, links []Link) []string {
 	rest := append([]string{}, section...)
 	moved := map[string][]string{}
 	for _, k := range links {
+		if i := indexContaining(old, k.target()); i >= 0 {
+			moved[k.Line()] = takeItem(old, i, k.Done)
+			continue
+		}
 		i := indexContaining(rest, k.target())
 		if i < 0 {
 			continue
 		}
 		n := 1 + childLines(rest[i+1:])
-		item := append([]string{}, rest[i:i+n]...)
-		if k.Done {
-			item[0] = checked(item[0])
-		}
-		moved[k.Line()] = item
+		moved[k.Line()] = takeItem(rest, i, k.Done)
 		rest = append(rest[:i], rest[i+n:]...)
 		if i < at {
 			at -= min(n, at-i)
@@ -227,8 +240,17 @@ func mergeBlock(section []string, at int, block []string, links []Link) []string
 		out = append(out, l)
 	}
 	res := append([]string{}, rest[:at]...)
-	res = append(res, out...)
+	res = append(res, markBlock(out)...)
 	return append(res, rest[at:]...)
+}
+
+// takeItem copies the list item at i with its child lines, checked when done.
+func takeItem(ls []string, i int, done bool) []string {
+	item := append([]string{}, ls[i:i+1+childLines(ls[i+1:])]...)
+	if done {
+		item[0] = checked(item[0])
+	}
+	return item
 }
 
 // childLines counts the indented lines that belong to the list item before ls.

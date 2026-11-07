@@ -18,9 +18,10 @@ var genCmd = &cobra.Command{
 	Short: "Write the daily time headings from Claude Code sessions and recorded calls",
 	Long: `Write the daily time headings of each log under the "gen" section of the config.
 
-Without an argument, writes each log from its newest day that already has a
-time heading through today, or from 30 days back when it has none.
-Older days are not touched.
+Without an argument, writes each log from yesterday, or from an older newest
+day that already has a time heading, through today.
+It starts 30 days back when no day has one.
+Days before the start are not touched.
 A block nobody edited by hand is rewritten on every run;
 a hand-edited day only gets task links.
 With a date, does that day only.

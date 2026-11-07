@@ -118,19 +118,57 @@ func TestRun_target(t *testing.T) {
 	today := "### 20261102_100000 notes 1h"
 	older := "### 20261031_100000 notes 1h"
 	handWritten := "### 20261101_090000 hand"
+	// staleDay is a day section whose gen block nobody edited, with a heading gen no longer writes.
+	staleDay := func(header, stamp string) string {
+		return lines(append([]string{"## " + header}, markBlock([]string{"### " + stamp + "_090000 STALE 1h", "### " + stamp + "_100000"})...)...)
+	}
+	staleOct31 := "# Log\n\n" + staleDay("2026-10-31 (土)", "20261031")
+	staleNov01 := "# Log\n\n" + staleDay("2026-11-01 (日)", "20261101")
 	tests := []struct {
 		name    string
 		target  time.Time
-		log     string
+		logs    map[string]string // file name under the log dir's year => content
 		want    []string
 		notWant []string
 	}{
 		{name: "指定も書いた日も無ければ_30日の窓を今日まで書くこと", want: []string{older, yesterday, today}},
 		{
-			name:    "書いた日があれば_それより古い日は書かず_その日以降を今日まで書くこと",
-			log:     "# Log\n\n## 2026-11-01 (日)\n" + handWritten + "\n",
+			name:    "手書きの日があれば_それより古い日は書かず_その日以降を今日まで書くこと",
+			logs:    map[string]string{"2026-11-01-log.md": "# Log\n\n## 2026-11-01 (日)\n" + handWritten + "\n"},
 			want:    []string{handWritten, today},
 			notWant: []string{older, yesterday},
+		},
+		{
+			name:    "最新の書いた日が手を入れていない区画なら_それを新しく書き直すこと",
+			logs:    map[string]string{"2026-11-01-log.md": staleNov01},
+			want:    []string{yesterday, today},
+			notWant: []string{"STALE", older},
+		},
+		{
+			name: "書いた日が2つあれば_古い日の手を入れていない区画は触らないこと",
+			logs: map[string]string{
+				"2026-10-01-log.md": staleOct31,
+				"2026-11-01-log.md": staleNov01,
+			},
+			want:    []string{yesterday, today, "### 20261031_090000 STALE 1h"},
+			notWant: []string{"### 20261101_090000 STALE 1h", older},
+		},
+		{
+			name: "時刻の見出しが無い節は書いた日に数えず_その前の書いた日から書くこと",
+			logs: map[string]string{
+				"2026-10-01-log.md": staleOct31,
+				"2026-11-01-log.md": "# Log\n\n## 2026-11-01 (日)\n- メモ\n",
+			},
+			want:    []string{older, yesterday, today, "- メモ"},
+			notWant: []string{"STALE"},
+		},
+		{
+			name: "今日が書いてあっても_昨日の手を入れていない区画は書き直すこと",
+			logs: map[string]string{
+				"2026-11-01-log.md": staleNov01 + "\n## 2026-11-02 (月)\n### 20261102_090000 hand\n",
+			},
+			want:    []string{yesterday, "### 20261102_090000 hand"},
+			notWant: []string{"### 20261101_090000 STALE 1h", older},
 		},
 		{
 			name:    "日付の指定でその日だけを書くこと",
@@ -147,9 +185,8 @@ func TestRun_target(t *testing.T) {
 				`{"type":"user","timestamp":"2026-10-31T01:20:00Z","cwd":"`+cwd+`"}`+"\n"+
 					`{"type":"user","timestamp":"2026-11-01T01:20:00Z","cwd":"`+cwd+`"}`+"\n"+
 					`{"type":"user","timestamp":"2026-11-02T01:20:00Z","cwd":"`+cwd+`"}`+"\n")
-			logPath := filepath.Join(root, "notes/work/2026/2026-11-01-log.md")
-			if tt.log != "" {
-				write(t, logPath, tt.log)
+			for name, content := range tt.logs {
+				write(t, filepath.Join(root, "notes/work/2026", name), content)
 			}
 			cfg := Config{
 				StoreRoot: cwd,

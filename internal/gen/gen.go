@@ -74,7 +74,7 @@ const meetingTagWindow = 30 * time.Minute
 
 // Run writes the days of every log; logDates tells which.
 // A day nobody edited by hand is rewritten, a hand-edited one only gets task links.
-// A zero target writes each log from its newest written day through today.
+// A zero target writes each log from yesterday, or from an older newest written day, through today.
 // Any other target is that day only.
 func Run(cfg Config, now, target time.Time, w io.Writer) error {
 	loc := now.Location()
@@ -133,10 +133,14 @@ func Run(cfg Config, now, target time.Time, w io.Writer) error {
 }
 
 // logDates is the days a run without a date writes to the log in dir:
-// from the newest day whose section already has a time heading through today.
+// from yesterday, or from the newest day whose section already has a time heading
+// when that is older, through today.
 // With no such day within catchUpDays, it starts catchUpDays back.
-// Older days are never touched: their session logs may be gone already.
+// Yesterday is always included because the daily run at noon finishes it:
+// a day written by hand before that must not freeze it at half a day.
+// Days older than the start are never touched: their session logs may be gone already.
 func logDates(dir string, today time.Time) ([]time.Time, error) {
+	yesterday := today.AddDate(0, 0, -1)
 	start := today.AddDate(0, 0, -catchUpDays)
 	for i := 0; i <= catchUpDays; i++ {
 		d := today.AddDate(0, 0, -i)
@@ -146,6 +150,9 @@ func logDates(dir string, today time.Time) ([]time.Time, error) {
 		}
 		if written {
 			start = d
+			if d.After(yesterday) {
+				start = yesterday
+			}
 			break
 		}
 	}
