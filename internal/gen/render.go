@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -56,8 +57,11 @@ var weekdays = [...]string{"日", "月", "火", "水", "木", "金", "土"}
 
 // DayHeader is the heading that opens the day: "## 2026-10-30 (金)".
 func DayHeader(date time.Time) string {
-	return fmt.Sprintf("## %s (%s)", date.Format("2006-01-02"), weekdays[date.Weekday()])
+	return fmt.Sprintf("## %s (%s)", dayKey(date), weekdays[date.Weekday()])
 }
+
+// dayKey is the date a day header carries, the key findSection and regDayHeader match on.
+func dayKey(date time.Time) string { return date.Format(time.DateOnly) }
 
 var regDayHeader = regexp.MustCompile(`^## (\d{4}-\d{2}-\d{2})`)
 
@@ -95,22 +99,13 @@ func findBlock(section []string) (state blockState, begin, end int) {
 		if m == nil {
 			continue
 		}
-		j := indexOf(section[i+1:], blockEnd)
+		j := slices.Index(section[i+1:], blockEnd)
 		if j < 0 || blockHash(section[i+1:i+1+j]) != m[1] {
 			return blockEdited, 0, 0
 		}
 		return blockOwned, i, i + 1 + j
 	}
 	return blockNone, 0, 0
-}
-
-func indexOf(ls []string, s string) int {
-	for i, l := range ls {
-		if l == s {
-			return i
-		}
-	}
-	return -1
 }
 
 // MergeDay puts the day into the log content.
@@ -132,7 +127,7 @@ func MergeDay(content string, date time.Time, block []string, links []Link) stri
 	if content == "" {
 		ls = nil
 	}
-	key := date.Format("2006-01-02")
+	key := dayKey(date)
 	head, end, found := findSection(ls, key)
 	if !found {
 		return join(insertSection(ls, key, append([]string{DayHeader(date)}, markBlock(block)...)))

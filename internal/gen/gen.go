@@ -150,11 +150,11 @@ func logDates(dir string, today time.Time) ([]time.Time, error) {
 		}
 		if written {
 			start = d
-			if d.After(yesterday) {
-				start = yesterday
-			}
 			break
 		}
+	}
+	if start.After(yesterday) {
+		start = yesterday
 	}
 	var dates []time.Time
 	for d := start; !d.After(today); d = d.AddDate(0, 0, 1) {
@@ -170,7 +170,7 @@ func dayWritten(dir string, date time.Time) (bool, error) {
 		return false, err
 	}
 	ls := strings.Split(content, "\n")
-	head, end, found := findSection(ls, date.Format("2006-01-02"))
+	head, end, found := findSection(ls, dayKey(date))
 	return found && hasTimeHeading(ls[head+1:end]), nil
 }
 
