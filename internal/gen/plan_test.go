@@ -2,6 +2,7 @@ package gen
 
 import (
 	"cmp"
+	"maps"
 	"reflect"
 	"testing"
 	"time"
@@ -223,6 +224,36 @@ func TestClock_UnmarshalText(t *testing.T) {
 			err := got.UnmarshalText([]byte(tt.in))
 			if (err != nil) != tt.wantErr || got != tt.want {
 				t.Errorf("UnmarshalText(%q) = %v, %v; want %v, err %v", tt.in, got, err, tt.want, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestWeigh(t *testing.T) {
+	tests := []struct {
+		name string
+		tags [][]string
+	}{
+		{
+			name: "同じ入力なら_何度足しても同じ重みを返すこと",
+			tags: [][]string{
+				{"A", "B", "C"}, {"A"}, {"A", "B"}, {"A", "B", "C", "D", "E", "F", "G"},
+				{"B", "C", "D"}, {"A", "C", "E", "G", "H", "I"}, {"B"}, {"A", "B", "C", "D", "E"},
+				{"C", "D", "E", "F", "G", "H", "I"}, {"A", "B", "C"}, {"B", "D", "F"},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			bins := map[time.Time][]string{}
+			for i, tags := range tt.tags {
+				bins[at(10, 0).Add(time.Duration(i)*binSize)] = tags
+			}
+			want := weigh(bins, at(0, 0), at(23, 0))
+			for range 200 {
+				if got := weigh(bins, at(0, 0), at(23, 0)); !maps.Equal(got, want) {
+					t.Fatalf("weigh() = %v, want %v", got, want)
+				}
 			}
 		})
 	}
