@@ -1,8 +1,11 @@
 package gen
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -54,28 +57,80 @@ var weekdays = [...]string{"日", "月", "火", "水", "木", "金", "土"}
 
 // DayHeader is the heading that opens the day: "## 2026-10-30 (金)".
 func DayHeader(date time.Time) string {
-	return fmt.Sprintf("## %s (%s)", date.Format("2006-01-02"), weekdays[date.Weekday()])
+	return fmt.Sprintf("## %s (%s)", dayKey(date), weekdays[date.Weekday()])
 }
+
+// dayKey is the date a day header carries, the key findSection and regDayHeader match on.
+func dayKey(date time.Time) string { return date.Format(time.DateOnly) }
 
 var regDayHeader = regexp.MustCompile(`^## (\d{4}-\d{2}-\d{2})`)
 
+var (
+	regBlockBegin = regexp.MustCompile(`^<!-- his gen ([0-9a-f]{16}) -->$`)
+	blockEnd      = "<!-- his gen end -->"
+)
+
+func blockHash(lines []string) string {
+	sum := sha256.Sum256([]byte(strings.Join(lines, "\n")))
+	return hex.EncodeToString(sum[:])[:16]
+}
+
+// markBlock wraps block in the marker lines that tell a later run what gen wrote.
+func markBlock(block []string) []string {
+	out := []string{"<!-- his gen " + blockHash(block) + " -->"}
+	out = append(out, block...)
+	return append(out, blockEnd)
+}
+
+// blockState is what a section holds of gen's marked block.
+type blockState int
+
+const (
+	blockNone   blockState = iota // no begin marker
+	blockOwned                    // markers around lines that still hash to the begin marker's hash
+	blockEdited                   // a begin marker whose lines changed, or that has no end marker
+)
+
+// findBlock looks for the gen block of the section.
+// For blockOwned it also returns the indexes of the two markers.
+func findBlock(section []string) (state blockState, begin, end int) {
+	for i, l := range section {
+		m := regBlockBegin.FindStringSubmatch(l)
+		if m == nil {
+			continue
+		}
+		j := slices.Index(section[i+1:], blockEnd)
+		if j < 0 || blockHash(section[i+1:i+1+j]) != m[1] {
+			return blockEdited, 0, 0
+		}
+		return blockOwned, i, i + 1 + j
+	}
+	return blockNone, 0, 0
+}
+
 // MergeDay puts the day into the log content.
-//   - No section for the day: one is created in date order with block.
-//   - A section without time headings: block goes right under the day header.
-//     Lines that link the same tasks are moved into block; other lines stay after it.
-//   - A section with time headings was written already (by hand or by gen):
-//     the headings stay, missing links are appended and finished tasks are checked.
+// block is written between marker lines that record the hash of what is written,
+// after the section's links are moved into it.
+//   - No section for the day: one is created in date order with the marked block.
+//   - A section holding a gen block nobody edited (its lines still match the hash
+//     in its begin marker): the block is replaced in place with the new one.
+//   - A section with a gen block somebody edited, or with time headings and no
+//     block (written by hand): the headings stay, missing links are appended and
+//     finished tasks are checked.
+//   - A section with neither: the marked block goes right under the day header.
 //
+// Whenever a block is written, lines in the rest of the section that link the same
+// tasks are moved into it; other lines stay outside it.
 // Running it again with the same input changes nothing.
 func MergeDay(content string, date time.Time, block []string, links []Link) string {
 	ls := strings.Split(strings.TrimSuffix(content, "\n"), "\n")
 	if content == "" {
 		ls = nil
 	}
-	key := date.Format("2006-01-02")
+	key := dayKey(date)
 	head, end, found := findSection(ls, key)
 	if !found {
-		return join(insertSection(ls, key, append([]string{DayHeader(date)}, block...)))
+		return join(insertSection(ls, key, append([]string{DayHeader(date)}, markBlock(block)...)))
 	}
 	out := append([]string{}, ls[:head+1]...)
 	out = append(out, mergeSection(ls[head+1:end], block, links)...)
@@ -83,10 +138,18 @@ func MergeDay(content string, date time.Time, block []string, links []Link) stri
 }
 
 func mergeSection(section, block []string, links []Link) []string {
+	state, begin, end := findBlock(section)
+	switch state {
+	case blockOwned:
+		rest := append(append([]string{}, section[:begin]...), section[end+1:]...)
+		return mergeBlock(rest, begin, section[begin+1:end], block, links)
+	case blockEdited:
+		return syncLinks(section, links)
+	}
 	if hasTimeHeading(section) {
 		return syncLinks(section, links)
 	}
-	return mergeBlock(section, block, links)
+	return mergeBlock(section, 0, nil, block, links)
 }
 
 func join(ls []string) string { return strings.Join(ls, "\n") + "\n" }
@@ -139,24 +202,29 @@ func hasTimeHeading(section []string) bool {
 	return false
 }
 
-// mergeBlock puts block first and keeps the rest of the section after it.
+// mergeBlock inserts block, marked, into the section at index at and keeps the rest around it.
 // A link the section already has keeps its line, hand-edited title and child
 // items included, and moves to its place in block; only its checkbox is updated.
-func mergeBlock(section, block []string, links []Link) []string {
+// old is the block being replaced: its items are searched first, because gen
+// moved them there on an earlier run.
+func mergeBlock(section []string, at int, old, block []string, links []Link) []string {
 	rest := append([]string{}, section...)
 	moved := map[string][]string{}
 	for _, k := range links {
+		if i := indexContaining(old, k.target()); i >= 0 {
+			moved[k.Line()] = takeItem(old, i, k.Done)
+			continue
+		}
 		i := indexContaining(rest, k.target())
 		if i < 0 {
 			continue
 		}
 		n := 1 + childLines(rest[i+1:])
-		item := append([]string{}, rest[i:i+n]...)
-		if k.Done {
-			item[0] = checked(item[0])
-		}
-		moved[k.Line()] = item
+		moved[k.Line()] = takeItem(rest, i, k.Done)
 		rest = append(rest[:i], rest[i+n:]...)
+		if i < at {
+			at -= min(n, at-i)
+		}
 	}
 	var out []string
 	for _, l := range block {
@@ -166,7 +234,18 @@ func mergeBlock(section, block []string, links []Link) []string {
 		}
 		out = append(out, l)
 	}
-	return append(out, rest...)
+	res := append([]string{}, rest[:at]...)
+	res = append(res, markBlock(out)...)
+	return append(res, rest[at:]...)
+}
+
+// takeItem copies the list item at i with its child lines, checked when done.
+func takeItem(ls []string, i int, done bool) []string {
+	item := append([]string{}, ls[i:i+1+childLines(ls[i+1:])]...)
+	if done {
+		item[0] = checked(item[0])
+	}
+	return item
 }
 
 // childLines counts the indented lines that belong to the list item before ls.
@@ -183,6 +262,7 @@ func checked(line string) string { return strings.Replace(line, "- [ ] ", "- [x]
 // syncLinks checks finished tasks and appends the links the section lacks.
 // They go after the last content of the day: before the end-of-day heading when
 // the section closes with one, else before the blank lines that close it.
+// A closing gen end marker is skipped like those blank lines.
 func syncLinks(section []string, links []Link) []string {
 	out := append([]string{}, section...)
 	var missing []string
@@ -197,6 +277,12 @@ func syncLinks(section []string, links []Link) []string {
 		}
 	}
 	at := len(out)
+	for at > 0 && strings.TrimSpace(out[at-1]) == "" {
+		at--
+	}
+	if at > 0 && out[at-1] == blockEnd {
+		at--
+	}
 	for at > 0 && strings.TrimSpace(out[at-1]) == "" {
 		at--
 	}

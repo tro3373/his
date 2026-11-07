@@ -5,6 +5,7 @@ package gen
 import (
 	"cmp"
 	"fmt"
+	"maps"
 	"math"
 	"slices"
 	"time"
@@ -301,12 +302,15 @@ func binActivities(acts []Activity, lunch0, lunch1 time.Time) map[time.Time][]st
 }
 
 // weigh sums the bins in [from, to). A bin shared by n projects gives each 1/n.
+// The bins are summed in time order: float sums depend on the order, and
+// allocateQuarters breaks ties on the remainders, so another order can move a quarter.
 func weigh(bins map[time.Time][]string, from, to time.Time) map[string]float64 {
 	w := map[string]float64{}
-	for b, tags := range bins {
+	for _, b := range slices.SortedFunc(maps.Keys(bins), time.Time.Compare) {
 		if !within(b, from, to) {
 			continue
 		}
+		tags := bins[b]
 		for _, tag := range tags {
 			w[tag] += 1 / float64(len(tags))
 		}

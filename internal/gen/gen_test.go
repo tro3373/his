@@ -68,7 +68,7 @@ func TestRun(t *testing.T) {
 			path: "notes/work/2026/2026-10-01-log.md",
 			want: []string{
 				"# Log", "", "## Head", "", "## 2026-10-29 (木)", "### 20261029_100000 ALPHA", "",
-				"## 2026-10-30 (金)",
+				"## 2026-10-30 (金)", "<!-- his gen 91bedaddd0af4338 -->",
 				// Only one activity in the morning, then nothing until 13:10: a break from 10:30.
 				"### 20261030_100000 ALPHA 0.5h",
 				"### 20261030_103000",
@@ -77,17 +77,17 @@ func TestRun(t *testing.T) {
 				"### 20261030_150000 ALPHA 1h 定例",
 				"### 20261030_160000 ALPHA 2h",
 				"- [x] [20261029-100000_x](tasks/backend/20261029-100000_x/index.md)",
-				"### 20261030_180000",
+				"### 20261030_180000", "<!-- his gen end -->",
 			},
 		},
 		{
 			name: "どのセッションも作業していない通話とタスクは既定のログに書くこと",
 			path: "notes/personal/2026/2026-10-30-log.md",
 			want: []string{
-				"# Log", "", "## 2026-10-30 (金)",
+				"# Log", "", "## 2026-10-30 (金)", "<!-- his gen 5fba107f5272247a -->",
 				"### 20261030_110000 MTG 0.5h 私用",
 				"- [ ] [20261030-090000_z](tasks/notes/20261030-090000_z/index.md)",
-				"### 20261030_113000",
+				"### 20261030_113000", "<!-- his gen end -->",
 			},
 		},
 	}
@@ -116,23 +116,78 @@ func TestRun_target(t *testing.T) {
 	now := time.Date(2026, 11, 2, 15, 0, 0, 0, jst)
 	yesterday := "### 20261101_100000 notes 1h"
 	today := "### 20261102_100000 notes 1h"
+	older := "### 20261031_100000 notes 1h"
+	handWritten := "### 20261101_090000 hand"
+	// staleDay is a day section whose gen block nobody edited, with a heading gen no longer writes.
+	staleDay := func(header, stamp string) string {
+		return lines(append([]string{"## " + header}, markBlock([]string{"### " + stamp + "_090000 STALE 1h", "### " + stamp + "_100000"})...)...)
+	}
+	staleOct31 := "# Log\n\n" + staleDay("2026-10-31 (土)", "20261031")
+	staleNov01 := "# Log\n\n" + staleDay("2026-11-01 (日)", "20261101")
 	tests := []struct {
 		name    string
 		target  time.Time
+		logs    map[string]string // file name under the log dir's year => content
 		want    []string
 		notWant []string
 	}{
-		{name: "指定が無ければ昨日までを書き_今日は書かないこと", want: []string{yesterday}, notWant: []string{today}},
-		{name: "today の指定で過去の足りない日と今日を書くこと", target: now, want: []string{yesterday, today}},
-		{name: "日付の指定でその日だけを書くこと", target: time.Date(2026, 11, 1, 0, 0, 0, 0, jst), want: []string{yesterday}, notWant: []string{today}},
+		{name: "指定も書いた日も無ければ_30日の窓を今日まで書くこと", want: []string{older, yesterday, today}},
+		{
+			name:    "手書きの日があれば_それより古い日は書かず_その日以降を今日まで書くこと",
+			logs:    map[string]string{"2026-11-01-log.md": "# Log\n\n## 2026-11-01 (日)\n" + handWritten + "\n"},
+			want:    []string{handWritten, today},
+			notWant: []string{older, yesterday},
+		},
+		{
+			name:    "最新の書いた日が手を入れていない区画なら_それを新しく書き直すこと",
+			logs:    map[string]string{"2026-11-01-log.md": staleNov01},
+			want:    []string{yesterday, today},
+			notWant: []string{"STALE", older},
+		},
+		{
+			name: "書いた日が2つあれば_古い日の手を入れていない区画は触らないこと",
+			logs: map[string]string{
+				"2026-10-01-log.md": staleOct31,
+				"2026-11-01-log.md": staleNov01,
+			},
+			want:    []string{yesterday, today, "### 20261031_090000 STALE 1h"},
+			notWant: []string{"### 20261101_090000 STALE 1h", older},
+		},
+		{
+			name: "時刻の見出しが無い節は書いた日に数えず_その前の書いた日から書くこと",
+			logs: map[string]string{
+				"2026-10-01-log.md": staleOct31,
+				"2026-11-01-log.md": "# Log\n\n## 2026-11-01 (日)\n- メモ\n",
+			},
+			want:    []string{older, yesterday, today, "- メモ"},
+			notWant: []string{"STALE"},
+		},
+		{
+			name: "今日が書いてあっても_昨日の手を入れていない区画は書き直すこと",
+			logs: map[string]string{
+				"2026-11-01-log.md": staleNov01 + "\n## 2026-11-02 (月)\n### 20261102_090000 hand\n",
+			},
+			want:    []string{yesterday, "### 20261102_090000 hand"},
+			notWant: []string{"### 20261101_090000 STALE 1h", older},
+		},
+		{
+			name:    "日付の指定でその日だけを書くこと",
+			target:  time.Date(2026, 11, 1, 0, 0, 0, 0, jst),
+			want:    []string{yesterday},
+			notWant: []string{today},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			root := t.TempDir()
 			cwd := filepath.Join(root, "notes")
 			write(t, filepath.Join(root, "work/projects/p/s.jsonl"),
-				`{"type":"user","timestamp":"2026-11-01T01:20:00Z","cwd":"`+cwd+`"}`+"\n"+
+				`{"type":"user","timestamp":"2026-10-31T01:20:00Z","cwd":"`+cwd+`"}`+"\n"+
+					`{"type":"user","timestamp":"2026-11-01T01:20:00Z","cwd":"`+cwd+`"}`+"\n"+
 					`{"type":"user","timestamp":"2026-11-02T01:20:00Z","cwd":"`+cwd+`"}`+"\n")
+			for name, content := range tt.logs {
+				write(t, filepath.Join(root, "notes/work/2026", name), content)
+			}
 			cfg := Config{
 				StoreRoot: cwd,
 				Sessions:  []string{filepath.Join(root, "work/projects")},
@@ -142,17 +197,23 @@ func TestRun_target(t *testing.T) {
 			if err := Run(cfg, now, tt.target, io.Discard); err != nil {
 				t.Fatal(err)
 			}
-			got, err := os.ReadFile(filepath.Join(root, "notes/work/2026/2026-11-01-log.md"))
-			if err != nil {
-				t.Fatal(err)
+			var all strings.Builder
+			files, _ := filepath.Glob(filepath.Join(root, "notes/work/2026/*-log.md"))
+			for _, f := range files {
+				b, err := os.ReadFile(f)
+				if err != nil {
+					t.Fatal(err)
+				}
+				all.Write(b)
 			}
+			got := all.String()
 			for _, w := range tt.want {
-				if !strings.Contains(string(got), w) {
+				if !strings.Contains(got, w) {
 					t.Errorf("%q is missing in\n%s", w, got)
 				}
 			}
 			for _, w := range tt.notWant {
-				if strings.Contains(string(got), w) {
+				if strings.Contains(got, w) {
 					t.Errorf("%q should not be in\n%s", w, got)
 				}
 			}
