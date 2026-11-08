@@ -21,13 +21,14 @@ func act(tag string, hh, mm int) Activity { return Activity{At: at(hh, mm), Tag:
 func TestPlanDay(t *testing.T) {
 	date := at(0, 0)
 	tests := []struct {
-		name  string
-		lunch Lunch     // zero means noon
-		limit time.Time // zero means the end of the day
-		acts  []Activity
-		meets []Meeting
-		want  Day
-		ok    bool
+		name    string
+		lunch   Lunch         // zero means noon
+		limit   time.Time     // zero means the end of the day
+		minIdle time.Duration // zero means an hour
+		acts    []Activity
+		meets   []Meeting
+		want    Day
+		ok      bool
 	}{
 		{
 			name: "最初と最後の活動を時単位で切り捨てて開始と終了にし_昼で区切ること",
@@ -204,6 +205,59 @@ func TestPlanDay(t *testing.T) {
 			ok:    false,
 		},
 		{
+			name:  "上限と同じ10分に入る上限以降の活動を区間の配分に数えないこと",
+			limit: at(9, 15),
+			acts:  []Activity{act("A", 9, 19)},
+			ok:    false,
+		},
+		{
+			name:  "活動が上限を越えて続く日は上限と同じ時台でも上限で終わること",
+			limit: at(10, 20),
+			acts:  []Activity{act("A", 10, 10), act("A", 10, 40)},
+			ok:    true,
+			want: Day{
+				Segments: []Segment{{Start: at(10, 0), Kind: KindWork, Hours: []TagHours{{"A", 1}}}},
+				End:      at(10, 15),
+			},
+		},
+		{
+			name:  "上限が昼休みの中なら昼休みの開始で終わること",
+			limit: at(12, 30),
+			acts:  []Activity{act("A", 11, 10), act("A", 15, 10)},
+			ok:    true,
+			want: Day{
+				Segments: []Segment{{Start: at(11, 0), Kind: KindWork, Hours: []TagHours{{"A", 4}}}},
+				End:      at(12, 0),
+			},
+		},
+		{
+			name:  "上限の手前の空白も上限以降の活動までの間なら休憩にすること",
+			limit: at(11, 30),
+			acts:  []Activity{act("A", 9, 0), act("A", 11, 40)},
+			ok:    true,
+			want: Day{
+				Segments: []Segment{
+					{Start: at(9, 0), Kind: KindWork, Hours: []TagHours{{"A", 1}}},
+					{Start: at(9, 15), Kind: KindBreak},
+				},
+				End: at(11, 30),
+			},
+		},
+		{
+			name:    "min_idle以上の空白を休憩にすること",
+			minIdle: 30 * time.Minute,
+			acts:    []Activity{act("A", 9, 0), act("A", 9, 50)},
+			ok:      true,
+			want: Day{
+				Segments: []Segment{
+					{Start: at(9, 0), Kind: KindWork, Hours: []TagHours{{"A", 1}}},
+					{Start: at(9, 15), Kind: KindBreak},
+					{Start: at(9, 45), Kind: KindWork, Hours: []TagHours{{"A", 1}}},
+				},
+				End: at(10, 0),
+			},
+		},
+		{
 			name:  "上限の直後の活動を区間の配分に数えないこと",
 			limit: at(9, 15),
 			acts:  []Activity{act("A", 9, 20)},
@@ -212,7 +266,7 @@ func TestPlanDay(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, ok := PlanDay(date, DayRules{Lunch: cmp.Or(tt.lunch, noon), MinIdle: time.Hour, Limit: cmp.Or(tt.limit, at(23, 59))}, tt.acts, tt.meets)
+			got, ok := PlanDay(date, DayRules{Lunch: cmp.Or(tt.lunch, noon), MinIdle: cmp.Or(tt.minIdle, time.Hour), Limit: cmp.Or(tt.limit, at(23, 59))}, tt.acts, tt.meets)
 			if ok != tt.ok {
 				t.Fatalf("PlanDay() ok = %v, want %v", ok, tt.ok)
 			}

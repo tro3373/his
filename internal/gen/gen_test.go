@@ -223,3 +223,60 @@ func TestRun_target(t *testing.T) {
 		})
 	}
 }
+
+func TestRun_settings(t *testing.T) {
+	now := time.Date(2026, 11, 2, 11, 50, 0, 0, jst)
+	tests := []struct {
+		name    string
+		lag     time.Duration
+		days    int
+		idle    time.Duration
+		want    string
+		notWant string
+	}{
+		{name: "lagの分だけ前で1日が終わること", lag: time.Hour, days: 30, idle: time.Hour, want: "### 20261102_104500\n"},
+		{name: "catch_up_daysより前の日を書かないこと", days: 1, idle: time.Hour, notWant: "2026-10-31"},
+		{name: "catch_up_days以内の日を書くこと", days: 2, idle: time.Hour, want: "2026-10-31"},
+		{name: "min_idle以上の空白を休憩にすること", days: 30, idle: 30 * time.Minute, want: "### 20261102_093000\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root := t.TempDir()
+			cwd := filepath.Join(root, "notes")
+			var session strings.Builder
+			for _, ts := range []string{"2026-10-31T01:20:00Z", "2026-11-02T00:10:00Z", "2026-11-02T01:10:00Z", "2026-11-02T02:20:00Z"} {
+				session.WriteString(`{"type":"user","timestamp":"` + ts + `","cwd":"` + cwd + `"}` + "\n")
+			}
+			write(t, filepath.Join(root, "work/projects/p/s.jsonl"), session.String())
+			dir := filepath.Join(root, "notes/work")
+			cfg := Config{
+				StoreRoot:   cwd,
+				Sessions:    []string{filepath.Join(root, "work/projects")},
+				Lunch:       noon,
+				Lag:         tt.lag,
+				CatchUpDays: tt.days,
+				MinIdle:     tt.idle,
+				Logs:        []LogConfig{{Name: "work", Dir: dir, Default: true}},
+			}
+			if err := Run(cfg, now, time.Time{}, io.Discard); err != nil {
+				t.Fatal(err)
+			}
+			files, _ := filepath.Glob(filepath.Join(dir, "2026/*-log.md"))
+			var all strings.Builder
+			for _, f := range files {
+				b, err := os.ReadFile(f)
+				if err != nil {
+					t.Fatal(err)
+				}
+				all.Write(b)
+			}
+			got := all.String()
+			if tt.want != "" && !strings.Contains(got, tt.want) {
+				t.Errorf("%q is missing in\n%s", tt.want, got)
+			}
+			if tt.notWant != "" && strings.Contains(got, tt.notWant) {
+				t.Errorf("%q must not be in\n%s", tt.notWant, got)
+			}
+		})
+	}
+}

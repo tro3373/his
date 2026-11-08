@@ -35,7 +35,7 @@ Config (~/.his):
       - ~/.claude/projects
       - ~/work/.claude/projects
     lunch: {start: "12:00", end: "13:00"}
-    lag: 30m                          # optional; 0s writes up to now
+    lag: 30m                          # optional; 0s still stops at the current quarter hour
     catch_up_days: 30                 # optional
     min_idle: 1h                      # optional; a shorter gap is not a break
     logs:

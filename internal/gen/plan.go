@@ -89,8 +89,9 @@ type DayRules struct {
 }
 
 // PlanDay splits the day into segments.
-// The day starts and ends at the first and last activity, truncated to the hour,
-// and never ends after rules.Limit.
+// The day starts and ends at the first and last activity, truncated to the hour.
+// A day with activity at or past rules.Limit ends at the limit instead,
+// and no day ends after it.
 // Lunch, meetings and idle stretches cut the day; every other stretch is shared
 // among projects by how many 10 minute bins each had activity in.
 // An idle stretch is rules.MinIdle or more, lunch aside, without activity or meeting:
@@ -115,6 +116,9 @@ func PlanDay(date time.Time, rules DayRules, acts []Activity, meets []Meeting) (
 		return Day{}, false
 	}
 	end = minTime(end, limit)
+	if slices.ContainsFunc(acts, func(a Activity) bool { return !a.At.Before(limit) }) {
+		end = limit
+	}
 	if end.After(p.lunch0) && !end.After(p.lunch1) && start.Before(p.lunch0) {
 		end = p.lunch0
 	}
@@ -122,9 +126,10 @@ func PlanDay(date time.Time, rules DayRules, acts []Activity, meets []Meeting) (
 		end = minTime(start.Add(time.Hour), limit)
 	}
 	p.meetings = meetingSlots(meets, start, end)
-	p.bins = binActivities(acts, p.lunch0, p.lunch1)
-	p.idle = p.idleSlots(start, end)
-	p.dayWeights = weigh(p.bins, time.Time{}, limit)
+	// Idleness needs the activity past the limit too: without it, the gap up to the limit looks like work.
+	p.idle = p.idleSlots(binActivities(acts, p.lunch0, p.lunch1), start, end)
+	p.bins = binActivities(between(acts, time.Time{}, limit), p.lunch0, p.lunch1)
+	p.dayWeights = weigh(p.bins, time.Time{}, end.Add(24*time.Hour))
 
 	var segs []Segment
 	for _, c := range p.cuts(start, end) {
@@ -212,9 +217,9 @@ type interval struct{ from, to time.Time }
 // idleSlots finds the breaks between activity: gaps of minIdle or more between
 // the bins and meetings, rounded inward to quarter hours and clipped to the day.
 // The gap before the first activity is not one: the day starts at that activity.
-func (p dayPlan) idleSlots(start, end time.Time) []interval {
-	busy := make([]interval, 0, len(p.bins)+len(p.meetings))
-	for b := range p.bins {
+func (p dayPlan) idleSlots(bins map[time.Time][]string, start, end time.Time) []interval {
+	busy := make([]interval, 0, len(bins)+len(p.meetings))
+	for b := range bins {
 		busy = append(busy, interval{b, b.Add(binSize)})
 	}
 	for _, m := range p.meetings {
