@@ -221,6 +221,13 @@ func TestRun_target(t *testing.T) {
 			if err := Run(cfg, cmp.Or(tt.now, now), tt.target, io.Discard); err != nil {
 				t.Fatal(err)
 			}
+			var again bytes.Buffer
+			if err := Run(cfg, cmp.Or(tt.now, now), tt.target, &again); err != nil {
+				t.Fatal(err)
+			}
+			if again.Len() != 0 {
+				t.Errorf("再実行でログを変えないこと: %s", again.String())
+			}
 			var all strings.Builder
 			files, _ := filepath.Glob(filepath.Join(root, "notes/work/2026/*-log.md"))
 			for _, f := range files {
@@ -242,5 +249,48 @@ func TestRun_target(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestRun_appendTaskLinks drives a day that already has an end heading:
+// only tasks of the appended part get a link, and finished tasks get checked.
+func TestRun_appendTaskLinks(t *testing.T) {
+	root := t.TempDir()
+	cwd := filepath.Join(root, "notes")
+	entry := func(utc, branch string) string {
+		return `{"type":"user","timestamp":"` + utc + `","cwd":"` + cwd + `","gitBranch":"` + branch + `"}` + "\n"
+	}
+	// JST = UTC+9: 09:30 before the end heading, 10:20 and 11:10 after it.
+	write(t, filepath.Join(root, "work/projects/p/s.jsonl"),
+		entry("2026-11-01T00:30:00Z", "feature/old")+entry("2026-11-01T01:20:00Z", "feature/new")+entry("2026-11-01T02:10:00Z", "feature/new"))
+	task := func(name, branch, status string) {
+		write(t, filepath.Join(root, "notes/tasks/notes", name, "index.md"), "---\nbranch: "+branch+"\nstatus: "+status+"\n---\n")
+	}
+	task("20261030-090000_done", "feature/done", "✅️")
+	task("20261030-090000_old", "feature/old", "")
+	task("20261101-093000_split", "", "")
+	task("20261030-090000_new", "feature/new", "")
+	doneLink := "[20261030-090000_done](tasks/notes/20261030-090000_done/index.md)"
+	log := filepath.Join(root, "notes/work/2026/2026-11-01-log.md")
+	write(t, log, lines("# Log", "", "## 2026-11-01 (日)", "### 20261101_090000 KEPT 1h", "- [ ] "+doneLink, "### 20261101_100000"))
+	cfg := Config{
+		StoreRoot: cwd,
+		Sessions:  []string{filepath.Join(root, "work/projects")},
+		Lunch:     noon,
+		MinIdle:   time.Hour,
+		Logs:      []LogConfig{{Name: "work", Dir: filepath.Join(root, "notes/work"), Default: true}},
+	}
+	now := time.Date(2026, 11, 2, 15, 0, 0, 0, jst)
+	if err := Run(cfg, now, time.Date(2026, 11, 1, 0, 0, 0, 0, jst), io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := lines("# Log", "", "## 2026-11-01 (日)", "### 20261101_090000 KEPT 1h", "- [x] "+doneLink,
+		"### 20261101_100000 notes 1h", "- [ ] [20261030-090000_new](tasks/notes/20261030-090000_new/index.md)", "### 20261101_110000")
+	if string(got) != want {
+		t.Errorf("log =\n%s\nwant\n%s", got, want)
 	}
 }

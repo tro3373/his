@@ -297,6 +297,26 @@ func TestPlanDay(t *testing.T) {
 			want:  Day{Segments: []Segment{{Start: at(14, 0), Kind: KindMeeting, Hours: []TagHours{{"ALPHA", 2}}, Title: "定例"}}, End: at(14, 30)},
 			ok:    true,
 		},
+		{
+			name:    "昼休み明けの1時間に活動が終わる日は昼休みの終わりで閉じること",
+			minIdle: 4 * time.Hour,
+			acts:    []Activity{act("A", 9, 10), act("A", 10, 10), act("A", 13, 10)},
+			want:    Day{Segments: []Segment{{Start: at(9, 0), Kind: KindWork, Hours: []TagHours{{"A", 12}}}, {Start: at(12, 0), Kind: KindBreak}}, End: at(13, 0)},
+			ok:      true,
+		},
+		{name: "確定済みから1時間未満なら上限まで活動があっても書かないこと", from: at(14, 0), limit: at(14, 45), acts: []Activity{act("A", 14, 10), act("A", 14, 50)}},
+		{
+			name: "確定済みからちょうど1時間なら書くこと", from: at(14, 0), limit: at(15, 0), acts: []Activity{act("A", 14, 10), act("A", 15, 10)},
+			want: Day{Segments: []Segment{{Start: at(14, 0), Kind: KindWork, Hours: []TagHours{{"A", 4}}}}, End: at(15, 0)}, ok: true,
+		},
+		{
+			name: "確定済みより前の会議で開始を早めないこと", from: at(14, 0), meets: []Meeting{{Start: at(10, 0), End: at(11, 0), Tag: "M", Title: "x"}}, acts: []Activity{act("A", 16, 20), act("A", 17, 10)},
+			want: Day{Segments: []Segment{{Start: at(16, 0), Kind: KindWork, Hours: []TagHours{{"A", 4}}}}, End: at(17, 0)}, ok: true,
+		},
+		{
+			name: "確定済みより前の活動で開始を早めないこと", from: at(14, 0), acts: []Activity{act("A", 10, 10), act("A", 16, 20), act("A", 17, 10)},
+			want: Day{Segments: []Segment{{Start: at(16, 0), Kind: KindWork, Hours: []TagHours{{"A", 4}}}}, End: at(17, 0)}, ok: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

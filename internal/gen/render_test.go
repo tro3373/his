@@ -97,6 +97,12 @@ func TestMergeDay(t *testing.T) {
 			want:    lines(head, "### 20261030_080000 ALPHA 1h", "### 20261030_090000", block[0], link, block[2]),
 		},
 		{
+			name:    "終業見出しの後ろのメモより後に続きを追記すること",
+			content: lines(head, "### 20261030_100000", "- メモ", "", "## 2026-10-31 (土)"),
+			block:   block,
+			want:    lines(head, block[0], "- メモ", link, block[2], "", "## 2026-10-31 (土)"),
+		},
+		{
 			name:    "節にあるリンクは追記で重ねないこと",
 			content: lines(head, "### 20261030_090000 ALPHA 手書き", "- [x] [手で直した題名](tasks/a/x/index.md)"),
 			block:   block,

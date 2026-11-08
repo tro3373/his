@@ -113,11 +113,12 @@ func latestHeading(section []string, loc *time.Location) (int, timelog.Heading, 
 //   - A section with no time heading: block goes right under the day header, and
 //     lines that link the same tasks move into it.
 //   - A section with time headings: block is appended and the lines before it stay.
-//     An end heading at the time block starts is replaced by block.
+//     An end heading at the time block starts is replaced by block's first heading.
 //
 // done lists the paths of finished tasks: their links are checked anywhere in the
 // section, the one change made to settled lines.
-// Running it again with the same input changes nothing.
+// block must start at SettledUntil or later: it is written as given, so a rerun
+// changes nothing only because the next plan is empty.
 func MergeDay(content string, date time.Time, block []string, links []Link, done []string) string {
 	ls := strings.Split(strings.TrimSuffix(content, "\n"), "\n")
 	if content == "" {
@@ -146,14 +147,15 @@ func mergeSection(section []string, loc *time.Location, block []string, links []
 	}
 	block = withoutPresentLinks(block, section, links)
 	first, err := timelog.Parse(block[0], loc)
+	out := slices.Clone(section)
 	if err == nil && timelog.IsEnd(section[last]) && first.Start.Equal(latest.Start) {
-		return slices.Replace(slices.Clone(section), last, last+1, block...)
+		out[last], block = block[0], block[1:]
 	}
-	at := len(section)
-	for at > 0 && strings.TrimSpace(section[at-1]) == "" {
+	at := len(out)
+	for at > 0 && strings.TrimSpace(out[at-1]) == "" {
 		at--
 	}
-	return slices.Insert(slices.Clone(section), at, block...)
+	return slices.Insert(out, at, block...)
 }
 
 func join(ls []string) string { return strings.Join(ls, "\n") + "\n" }

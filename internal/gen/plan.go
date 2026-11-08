@@ -98,8 +98,8 @@ type DayRules struct {
 // An idle stretch is rules.MinIdle or more, lunch aside, without activity or meeting:
 // it becomes a break rather than work made up from the day's share.
 // Only what follows rules.From is planned, so a rerun adds to the settled part:
-// it returns false until an hour has passed since rules.From, which keeps a log
-// to one new heading an hour, and when no hour of activity or meeting follows it.
+// it returns false until rules.Limit is an hour past rules.From, which keeps a log
+// to one append an hour, and when no hour of activity or meeting follows it.
 // It also returns false when nothing in the day counts as work or meeting.
 func PlanDay(date time.Time, rules DayRules, acts []Activity, meets []Meeting) (Day, bool) {
 	acts = between(acts, rules.From, midnight(date).AddDate(0, 0, 1))
@@ -129,7 +129,10 @@ func PlanDay(date time.Time, rules DayRules, acts []Activity, meets []Meeting) (
 	if slices.ContainsFunc(acts, func(a Activity) bool { return !a.At.Before(limit) }) {
 		end = limit
 	}
-	if end.After(p.lunch0) && !end.After(p.lunch1) && start.Before(p.lunch0) {
+	// Without this check a rerun would plan the hour after lunch that this run left out.
+	resumes := slices.ContainsFunc(acts, func(a Activity) bool { return within(a.At, p.lunch1, limit) }) ||
+		slices.ContainsFunc(meets, func(m Meeting) bool { return within(m.Start, p.lunch1, limit) })
+	if !resumes && end.After(p.lunch0) && !end.After(p.lunch1) && start.Before(p.lunch0) {
 		end = p.lunch0
 	}
 	if !end.After(rules.From) {
