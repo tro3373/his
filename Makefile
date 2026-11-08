@@ -105,10 +105,7 @@ testsum-cover-check: testsum
 	@go-test-coverage --config=./.testcoverage.yaml
 
 
-gen: mockery swag
-swag:
-	@echo "==> Running swag init" >&2
-	@swag init -g cmd/main.go -o swagger --parseInternal --parseDependency --parseDependencyLevel 1
+gen: mockery
 mockery:
 	@echo "==> Running mockery" >&2
 	@mockery

@@ -55,7 +55,7 @@ make fmt
 # Run tests with coverage
 make test
 
-# Generate mocks and swagger docs
+# Generate mocks
 make gen
 
 # Run specific commands
