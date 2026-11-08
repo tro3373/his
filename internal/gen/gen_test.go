@@ -130,16 +130,18 @@ func TestRun_target(t *testing.T) {
 	lateMorning := time.Date(2026, 11, 2, 11, 50, 0, 0, jst)
 	dayStamps := []string{"2026-10-31T01:20:00Z", "2026-11-02T00:10:00Z", "2026-11-02T01:10:00Z", "2026-11-02T02:20:00Z"}
 	tests := []struct {
-		name    string
-		target  time.Time
-		logs    map[string]string // file name under the log dir's year => content
-		now     time.Time         // zero means the run at the top of this test
-		stamps  []string          // session messages; empty means one on each of the last 3 days
-		lag     time.Duration
-		days    int           // zero means 30
-		idle    time.Duration // zero means an hour
-		want    []string
-		notWant []string
+		name     string
+		target   time.Time
+		logs     map[string]string // file name under the log dir's year => content
+		now      time.Time         // zero means the run at the top of this test
+		stamps   []string          // session messages; empty means one on each of the last 3 days
+		branches []string          // the git branch of each stamp; empty means none
+		tasks    map[string]string // task directory under notes/tasks/notes => front matter body
+		lag      time.Duration
+		days     int           // zero means 30
+		idle     time.Duration // zero means an hour
+		want     []string
+		notWant  []string
 	}{
 		{name: "指定も書いた日も無ければ_30日の窓を今日まで書くこと", want: []string{older, yesterday, today}},
 		{
@@ -183,6 +185,23 @@ func TestRun_target(t *testing.T) {
 			notWant: []string{older},
 		},
 		{
+			name:     "追記する時間帯の作業のタスクだけリンクし_確定済みの完了タスクは印を更新すること",
+			target:   time.Date(2026, 11, 1, 0, 0, 0, 0, jst),
+			stamps:   []string{"2026-11-01T00:30:00Z", "2026-11-01T01:20:00Z", "2026-11-01T02:10:00Z"},
+			branches: []string{"feature/old", "feature/new", "feature/new"},
+			tasks: map[string]string{
+				"20261030-090000_done":  "branch: feature/done\nstatus: ✅️\n",
+				"20261030-090000_old":   "branch: feature/old\nstatus:\n",
+				"20261101-093000_split": "status:\n",
+				"20261030-090000_new":   "branch: feature/new\nstatus:\n",
+			},
+			logs: map[string]string{"2026-11-01-log.md": lines("# Log", "", "## 2026-11-01 (日)", "### 20261101_090000 KEPT 1h",
+				"- [ ] [20261030-090000_done](tasks/notes/20261030-090000_done/index.md)", "### 20261101_100000")},
+			want: []string{lines("### 20261101_090000 KEPT 1h", "- [x] [20261030-090000_done](tasks/notes/20261030-090000_done/index.md)",
+				"### 20261101_100000 notes 1h", "- [ ] [20261030-090000_new](tasks/notes/20261030-090000_new/index.md)", "### 20261101_110000")},
+			notWant: []string{"20261030-090000_old", "20261101-093000_split"},
+		},
+		{
 			name:    "日付の指定でその日だけを書くこと",
 			target:  time.Date(2026, 11, 1, 0, 0, 0, 0, jst),
 			want:    []string{yesterday},
@@ -202,8 +221,15 @@ func TestRun_target(t *testing.T) {
 				stamps = []string{"2026-10-31T01:20:00Z", "2026-11-01T01:20:00Z", "2026-11-02T01:20:00Z"}
 			}
 			var session strings.Builder
-			for _, ts := range stamps {
-				session.WriteString(`{"type":"user","timestamp":"` + ts + `","cwd":"` + cwd + `"}` + "\n")
+			for n, ts := range stamps {
+				branch := ""
+				if len(tt.branches) > 0 {
+					branch = tt.branches[n]
+				}
+				session.WriteString(`{"type":"user","timestamp":"` + ts + `","cwd":"` + cwd + `","gitBranch":"` + branch + `"}` + "\n")
+			}
+			for name, front := range tt.tasks {
+				write(t, filepath.Join(root, "notes/tasks/notes", name, "index.md"), "---\n"+front+"---\n")
 			}
 			write(t, filepath.Join(root, "work/projects/p/s.jsonl"), session.String())
 			for name, content := range tt.logs {
@@ -249,48 +275,5 @@ func TestRun_target(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-// TestRun_appendTaskLinks drives a day that already has an end heading:
-// only tasks of the appended part get a link, and finished tasks get checked.
-func TestRun_appendTaskLinks(t *testing.T) {
-	root := t.TempDir()
-	cwd := filepath.Join(root, "notes")
-	entry := func(utc, branch string) string {
-		return `{"type":"user","timestamp":"` + utc + `","cwd":"` + cwd + `","gitBranch":"` + branch + `"}` + "\n"
-	}
-	// JST = UTC+9: 09:30 before the end heading, 10:20 and 11:10 after it.
-	write(t, filepath.Join(root, "work/projects/p/s.jsonl"),
-		entry("2026-11-01T00:30:00Z", "feature/old")+entry("2026-11-01T01:20:00Z", "feature/new")+entry("2026-11-01T02:10:00Z", "feature/new"))
-	task := func(name, branch, status string) {
-		write(t, filepath.Join(root, "notes/tasks/notes", name, "index.md"), "---\nbranch: "+branch+"\nstatus: "+status+"\n---\n")
-	}
-	task("20261030-090000_done", "feature/done", "✅️")
-	task("20261030-090000_old", "feature/old", "")
-	task("20261101-093000_split", "", "")
-	task("20261030-090000_new", "feature/new", "")
-	doneLink := "[20261030-090000_done](tasks/notes/20261030-090000_done/index.md)"
-	log := filepath.Join(root, "notes/work/2026/2026-11-01-log.md")
-	write(t, log, lines("# Log", "", "## 2026-11-01 (日)", "### 20261101_090000 KEPT 1h", "- [ ] "+doneLink, "### 20261101_100000"))
-	cfg := Config{
-		StoreRoot: cwd,
-		Sessions:  []string{filepath.Join(root, "work/projects")},
-		Lunch:     noon,
-		MinIdle:   time.Hour,
-		Logs:      []LogConfig{{Name: "work", Dir: filepath.Join(root, "notes/work"), Default: true}},
-	}
-	now := time.Date(2026, 11, 2, 15, 0, 0, 0, jst)
-	if err := Run(cfg, now, time.Date(2026, 11, 1, 0, 0, 0, 0, jst), io.Discard); err != nil {
-		t.Fatal(err)
-	}
-	got, err := os.ReadFile(log)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := lines("# Log", "", "## 2026-11-01 (日)", "### 20261101_090000 KEPT 1h", "- [x] "+doneLink,
-		"### 20261101_100000 notes 1h", "- [ ] [20261030-090000_new](tasks/notes/20261030-090000_new/index.md)", "### 20261101_110000")
-	if string(got) != want {
-		t.Errorf("log =\n%s\nwant\n%s", got, want)
 	}
 }
