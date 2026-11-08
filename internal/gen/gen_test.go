@@ -2,6 +2,7 @@ package gen
 
 import (
 	"bytes"
+	"cmp"
 	"io"
 	"os"
 	"path/filepath"
@@ -125,10 +126,17 @@ func TestRun_target(t *testing.T) {
 	}
 	staleOct31 := "# Log\n\n" + staleDay("2026-10-31 (土)", "20261031")
 	staleNov01 := "# Log\n\n" + staleDay("2026-11-01 (日)", "20261101")
+	lateMorning := time.Date(2026, 11, 2, 11, 50, 0, 0, jst)
+	dayStamps := []string{"2026-10-31T01:20:00Z", "2026-11-02T00:10:00Z", "2026-11-02T01:10:00Z", "2026-11-02T02:20:00Z"}
 	tests := []struct {
 		name    string
 		target  time.Time
 		logs    map[string]string // file name under the log dir's year => content
+		now     time.Time         // zero means the run at the top of this test
+		stamps  []string          // session messages; empty means one on each of the last 3 days
+		lag     time.Duration
+		days    int           // zero means 30
+		idle    time.Duration // zero means an hour
 		want    []string
 		notWant []string
 	}{
@@ -177,15 +185,24 @@ func TestRun_target(t *testing.T) {
 			want:    []string{yesterday},
 			notWant: []string{today},
 		},
+		{name: "lagの分だけ前で1日が終わること", now: lateMorning, stamps: dayStamps, lag: time.Hour, want: []string{"### 20261102_104500\n"}},
+		{name: "catch_up_daysより前の日を書かないこと", now: lateMorning, stamps: dayStamps, days: 1, notWant: []string{"2026-10-31"}},
+		{name: "catch_up_days以内の日を書くこと", now: lateMorning, stamps: dayStamps, days: 2, want: []string{"2026-10-31"}},
+		{name: "min_idle以上の空白を休憩にすること", now: lateMorning, stamps: dayStamps, idle: 30 * time.Minute, want: []string{"### 20261102_093000\n"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			root := t.TempDir()
 			cwd := filepath.Join(root, "notes")
-			write(t, filepath.Join(root, "work/projects/p/s.jsonl"),
-				`{"type":"user","timestamp":"2026-10-31T01:20:00Z","cwd":"`+cwd+`"}`+"\n"+
-					`{"type":"user","timestamp":"2026-11-01T01:20:00Z","cwd":"`+cwd+`"}`+"\n"+
-					`{"type":"user","timestamp":"2026-11-02T01:20:00Z","cwd":"`+cwd+`"}`+"\n")
+			stamps := tt.stamps
+			if len(stamps) == 0 {
+				stamps = []string{"2026-10-31T01:20:00Z", "2026-11-01T01:20:00Z", "2026-11-02T01:20:00Z"}
+			}
+			var session strings.Builder
+			for _, ts := range stamps {
+				session.WriteString(`{"type":"user","timestamp":"` + ts + `","cwd":"` + cwd + `"}` + "\n")
+			}
+			write(t, filepath.Join(root, "work/projects/p/s.jsonl"), session.String())
 			for name, content := range tt.logs {
 				write(t, filepath.Join(root, "notes/work/2026", name), content)
 			}
@@ -193,11 +210,12 @@ func TestRun_target(t *testing.T) {
 				StoreRoot:   cwd,
 				Sessions:    []string{filepath.Join(root, "work/projects")},
 				Lunch:       noon,
-				MinIdle:     time.Hour,
-				CatchUpDays: 30,
+				Lag:         tt.lag,
+				MinIdle:     cmp.Or(tt.idle, time.Hour),
+				CatchUpDays: cmp.Or(tt.days, 30),
 				Logs:        []LogConfig{{Name: "work", Dir: filepath.Join(root, "notes/work"), Default: true}},
 			}
-			if err := Run(cfg, now, tt.target, io.Discard); err != nil {
+			if err := Run(cfg, cmp.Or(tt.now, now), tt.target, io.Discard); err != nil {
 				t.Fatal(err)
 			}
 			var all strings.Builder
@@ -219,63 +237,6 @@ func TestRun_target(t *testing.T) {
 				if strings.Contains(got, w) {
 					t.Errorf("%q should not be in\n%s", w, got)
 				}
-			}
-		})
-	}
-}
-
-func TestRun_settings(t *testing.T) {
-	now := time.Date(2026, 11, 2, 11, 50, 0, 0, jst)
-	tests := []struct {
-		name    string
-		lag     time.Duration
-		days    int
-		idle    time.Duration
-		want    string
-		notWant string
-	}{
-		{name: "lagの分だけ前で1日が終わること", lag: time.Hour, days: 30, idle: time.Hour, want: "### 20261102_104500\n"},
-		{name: "catch_up_daysより前の日を書かないこと", days: 1, idle: time.Hour, notWant: "2026-10-31"},
-		{name: "catch_up_days以内の日を書くこと", days: 2, idle: time.Hour, want: "2026-10-31"},
-		{name: "min_idle以上の空白を休憩にすること", days: 30, idle: 30 * time.Minute, want: "### 20261102_093000\n"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			root := t.TempDir()
-			cwd := filepath.Join(root, "notes")
-			var session strings.Builder
-			for _, ts := range []string{"2026-10-31T01:20:00Z", "2026-11-02T00:10:00Z", "2026-11-02T01:10:00Z", "2026-11-02T02:20:00Z"} {
-				session.WriteString(`{"type":"user","timestamp":"` + ts + `","cwd":"` + cwd + `"}` + "\n")
-			}
-			write(t, filepath.Join(root, "work/projects/p/s.jsonl"), session.String())
-			dir := filepath.Join(root, "notes/work")
-			cfg := Config{
-				StoreRoot:   cwd,
-				Sessions:    []string{filepath.Join(root, "work/projects")},
-				Lunch:       noon,
-				Lag:         tt.lag,
-				CatchUpDays: tt.days,
-				MinIdle:     tt.idle,
-				Logs:        []LogConfig{{Name: "work", Dir: dir, Default: true}},
-			}
-			if err := Run(cfg, now, time.Time{}, io.Discard); err != nil {
-				t.Fatal(err)
-			}
-			files, _ := filepath.Glob(filepath.Join(dir, "2026/*-log.md"))
-			var all strings.Builder
-			for _, f := range files {
-				b, err := os.ReadFile(f)
-				if err != nil {
-					t.Fatal(err)
-				}
-				all.Write(b)
-			}
-			got := all.String()
-			if tt.want != "" && !strings.Contains(got, tt.want) {
-				t.Errorf("%q is missing in\n%s", tt.want, got)
-			}
-			if tt.notWant != "" && strings.Contains(got, tt.notWant) {
-				t.Errorf("%q must not be in\n%s", tt.notWant, got)
 			}
 		})
 	}
