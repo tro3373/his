@@ -23,8 +23,9 @@ day that already has a time heading, through today.
 It starts catch_up_days back when no day has one.
 A day ends no later than lag before now.
 Days before the start are not touched.
-A block nobody edited by hand is rewritten on every run;
-a hand-edited day only gets task links.
+A day is only added to: what follows its latest time heading is appended,
+at most one new heading an hour, and earlier lines stay except that the
+links of finished tasks get checked.
 With a date, does that day only.
 
 Config (~/.his):

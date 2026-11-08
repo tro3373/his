@@ -25,6 +25,7 @@ func TestPlanDay(t *testing.T) {
 		lunch   Lunch         // zero means noon
 		limit   time.Time     // zero means the end of the day
 		minIdle time.Duration // zero means an hour
+		from    time.Time
 		acts    []Activity
 		meets   []Meeting
 		want    Day
@@ -263,10 +264,43 @@ func TestPlanDay(t *testing.T) {
 			acts:  []Activity{act("A", 9, 20)},
 			ok:    false,
 		},
+		{
+			name: "確定済みより前の活動を数えず_続きの作業はその時刻から始めること",
+			from: at(14, 0),
+			acts: []Activity{act("ALPHA", 13, 10), act("GAMMA", 14, 10), act("GAMMA", 15, 10)},
+			want: Day{Segments: []Segment{{Start: at(14, 0), Kind: KindWork, Hours: []TagHours{{"GAMMA", 4}}}}, End: at(15, 0)},
+			ok:   true,
+		},
+		{
+			name: "確定済みの後に間があれば活動の時から始めること",
+			from: at(14, 0),
+			acts: []Activity{act("ALPHA", 16, 20), act("ALPHA", 17, 10)},
+			want: Day{Segments: []Segment{{Start: at(16, 0), Kind: KindWork, Hours: []TagHours{{"ALPHA", 4}}}}, End: at(17, 0)},
+			ok:   true,
+		},
+		{
+			name: "確定済みの時と同じ時の活動だけなら書かないこと",
+			from: at(14, 0),
+			acts: []Activity{act("ALPHA", 14, 10)},
+		},
+		{
+			name:  "確定済みから1時間たっていなければ書かないこと",
+			from:  at(14, 0),
+			limit: at(14, 59),
+			acts:  []Activity{act("ALPHA", 14, 10), act("ALPHA", 14, 40)},
+		},
+		{
+			name:  "確定済みをまたぐ会議はその時刻から書き_1時間未満でも書くこと",
+			from:  at(14, 0),
+			limit: at(16, 0),
+			meets: []Meeting{{Start: at(13, 30), End: at(14, 30), Tag: "ALPHA", Title: "定例"}},
+			want:  Day{Segments: []Segment{{Start: at(14, 0), Kind: KindMeeting, Hours: []TagHours{{"ALPHA", 2}}, Title: "定例"}}, End: at(14, 30)},
+			ok:    true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, ok := PlanDay(date, DayRules{Lunch: cmp.Or(tt.lunch, noon), MinIdle: cmp.Or(tt.minIdle, time.Hour), Limit: cmp.Or(tt.limit, at(23, 59))}, tt.acts, tt.meets)
+			got, ok := PlanDay(date, DayRules{Lunch: cmp.Or(tt.lunch, noon), MinIdle: cmp.Or(tt.minIdle, time.Hour), Limit: cmp.Or(tt.limit, at(23, 59)), From: tt.from}, tt.acts, tt.meets)
 			if ok != tt.ok {
 				t.Fatalf("PlanDay() ok = %v, want %v", ok, tt.ok)
 			}

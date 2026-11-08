@@ -1,8 +1,6 @@
 package gen
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"regexp"
 	"slices"
@@ -29,7 +27,10 @@ func (l Link) Line() string {
 	return fmt.Sprintf("- [%s] [%s](%s)", mark, l.Title, l.Path)
 }
 
-func (l Link) target() string { return "](" + l.Path + ")" }
+func (l Link) target() string { return target(l.Path) }
+
+// target is how a list item links the task at path.
+func target(path string) string { return "](" + path + ")" }
 
 // RenderDay renders the time headings of the day with each link under its segment.
 func RenderDay(d Day, links []Link) []string {
@@ -65,91 +66,94 @@ func dayKey(date time.Time) string { return date.Format(time.DateOnly) }
 
 var regDayHeader = regexp.MustCompile(`^## (\d{4}-\d{2}-\d{2})`)
 
-var (
-	regBlockBegin = regexp.MustCompile(`^<!-- his gen ([0-9a-f]{16}) -->$`)
-	blockEnd      = "<!-- his gen end -->"
-)
-
-func blockHash(lines []string) string {
-	sum := sha256.Sum256([]byte(strings.Join(lines, "\n")))
-	return hex.EncodeToString(sum[:])[:16]
+// SettledUntil is when the settled part of date's section ends: what a run may
+// not write before. The zero time means the section has no time heading.
+//   - An end heading settles up to its own time.
+//   - A heading with hours settles what those hours cover.
+//   - Any other heading is open: it settles up to the next quarter hour.
+func SettledUntil(content string, date time.Time) time.Time {
+	ls := strings.Split(content, "\n")
+	head, end, found := findSection(ls, dayKey(date))
+	if !found {
+		return time.Time{}
+	}
+	i, h, ok := latestHeading(ls[head+1:end], date.Location())
+	if !ok {
+		return time.Time{}
+	}
+	if timelog.IsEnd(ls[head+1 : end][i]) {
+		return h.Start
+	}
+	if len(h.Hours) == 0 {
+		return h.Start.Truncate(quarter).Add(quarter)
+	}
+	var hours float64
+	for _, th := range h.Hours {
+		hours += th.Hours
+	}
+	return ceilQuarter(h.Start.Add(time.Duration(hours * float64(time.Hour))))
 }
 
-// markBlock wraps block in the marker lines that tell a later run what gen wrote.
-func markBlock(block []string) []string {
-	out := []string{"<!-- his gen " + blockHash(block) + " -->"}
-	out = append(out, block...)
-	return append(out, blockEnd)
-}
-
-// blockState is what a section holds of gen's marked block.
-type blockState int
-
-const (
-	blockNone   blockState = iota // no begin marker
-	blockOwned                    // markers around lines that still hash to the begin marker's hash
-	blockEdited                   // a begin marker whose lines changed, or that has no end marker
-)
-
-// findBlock looks for the gen block of the section.
-// For blockOwned it also returns the indexes of the two markers.
-func findBlock(section []string) (state blockState, begin, end int) {
+// latestHeading finds the time heading with the latest time, and its index in section.
+func latestHeading(section []string, loc *time.Location) (int, timelog.Heading, bool) {
+	at, latest, found := 0, timelog.Heading{}, false
 	for i, l := range section {
-		m := regBlockBegin.FindStringSubmatch(l)
-		if m == nil {
+		h, err := timelog.Parse(l, loc)
+		if err != nil || found && !h.Start.After(latest.Start) {
 			continue
 		}
-		j := slices.Index(section[i+1:], blockEnd)
-		if j < 0 || blockHash(section[i+1:i+1+j]) != m[1] {
-			return blockEdited, 0, 0
-		}
-		return blockOwned, i, i + 1 + j
+		at, latest, found = i, h, true
 	}
-	return blockNone, 0, 0
+	return at, latest, found
 }
 
 // MergeDay puts the day into the log content.
-// block is written between marker lines that record the hash of what is written,
-// after the section's links are moved into it.
-//   - No section for the day: one is created in date order with the marked block.
-//   - A section holding a gen block nobody edited (its lines still match the hash
-//     in its begin marker): the block is replaced in place with the new one.
-//   - A section with a gen block somebody edited, or with time headings and no
-//     block (written by hand): the headings stay, missing links are appended and
-//     finished tasks are checked.
-//   - A section with neither: the marked block goes right under the day header.
+// block is what the run has for the day after SettledUntil; nil when it has nothing.
+//   - No section for the day: one is created in date order with block.
+//   - A section with no time heading: block goes right under the day header, and
+//     lines that link the same tasks move into it.
+//   - A section with time headings: block is appended and the lines before it stay.
+//     An end heading at the time block starts is replaced by block.
 //
-// Whenever a block is written, lines in the rest of the section that link the same
-// tasks are moved into it; other lines stay outside it.
+// done lists the paths of finished tasks: their links are checked anywhere in the
+// section, the one change made to settled lines.
 // Running it again with the same input changes nothing.
-func MergeDay(content string, date time.Time, block []string, links []Link) string {
+func MergeDay(content string, date time.Time, block []string, links []Link, done []string) string {
 	ls := strings.Split(strings.TrimSuffix(content, "\n"), "\n")
 	if content == "" {
 		ls = nil
 	}
 	key := dayKey(date)
 	head, end, found := findSection(ls, key)
+	if !found && len(block) == 0 {
+		return content
+	}
 	if !found {
-		return join(insertSection(ls, key, append([]string{DayHeader(date)}, markBlock(block)...)))
+		return join(insertSection(ls, key, append([]string{DayHeader(date)}, block...)))
 	}
 	out := append([]string{}, ls[:head+1]...)
-	out = append(out, mergeSection(ls[head+1:end], block, links)...)
+	out = append(out, mergeSection(checkDone(ls[head+1:end], done), date.Location(), block, links)...)
 	return join(append(out, ls[end:]...))
 }
 
-func mergeSection(section, block []string, links []Link) []string {
-	state, begin, end := findBlock(section)
-	switch state {
-	case blockOwned:
-		rest := append(append([]string{}, section[:begin]...), section[end+1:]...)
-		return mergeBlock(rest, begin, section[begin+1:end], block, links)
-	case blockEdited:
-		return syncLinks(section, links)
+func mergeSection(section []string, loc *time.Location, block []string, links []Link) []string {
+	if len(block) == 0 {
+		return section
 	}
-	if hasTimeHeading(section) {
-		return syncLinks(section, links)
+	last, latest, found := latestHeading(section, loc)
+	if !found {
+		return placeBlock(section, block, links)
 	}
-	return mergeBlock(section, 0, nil, block, links)
+	block = withoutPresentLinks(block, section, links)
+	first, err := timelog.Parse(block[0], loc)
+	if err == nil && timelog.IsEnd(section[last]) && first.Start.Equal(latest.Start) {
+		return slices.Replace(slices.Clone(section), last, last+1, block...)
+	}
+	at := len(section)
+	for at > 0 && strings.TrimSpace(section[at-1]) == "" {
+		at--
+	}
+	return slices.Insert(slices.Clone(section), at, block...)
 }
 
 func join(ls []string) string { return strings.Join(ls, "\n") + "\n" }
@@ -202,29 +206,20 @@ func hasTimeHeading(section []string) bool {
 	return false
 }
 
-// mergeBlock inserts block, marked, into the section at index at and keeps the rest around it.
+// placeBlock writes block at the top of a section without time headings.
 // A link the section already has keeps its line, hand-edited title and child
 // items included, and moves to its place in block; only its checkbox is updated.
-// old is the block being replaced: its items are searched first, because gen
-// moved them there on an earlier run.
-func mergeBlock(section []string, at int, old, block []string, links []Link) []string {
-	rest := append([]string{}, section...)
+func placeBlock(section, block []string, links []Link) []string {
+	rest := slices.Clone(section)
 	moved := map[string][]string{}
 	for _, k := range links {
-		if i := indexContaining(old, k.target()); i >= 0 {
-			moved[k.Line()] = takeItem(old, i, k.Done)
-			continue
-		}
 		i := indexContaining(rest, k.target())
 		if i < 0 {
 			continue
 		}
-		n := 1 + childLines(rest[i+1:])
-		moved[k.Line()] = takeItem(rest, i, k.Done)
-		rest = append(rest[:i], rest[i+n:]...)
-		if i < at {
-			at -= min(n, at-i)
-		}
+		item := takeItem(rest, i, k.Done)
+		moved[k.Line()] = item
+		rest = slices.Delete(rest, i, i+len(item))
 	}
 	var out []string
 	for _, l := range block {
@@ -234,9 +229,16 @@ func mergeBlock(section []string, at int, old, block []string, links []Link) []s
 		}
 		out = append(out, l)
 	}
-	res := append([]string{}, rest[:at]...)
-	res = append(res, markBlock(out)...)
-	return append(res, rest[at:]...)
+	return append(out, rest...)
+}
+
+// withoutPresentLinks drops from block the link lines the section already has.
+func withoutPresentLinks(block, section []string, links []Link) []string {
+	present := map[string]bool{}
+	for _, k := range links {
+		present[k.Line()] = indexContaining(section, k.target()) >= 0
+	}
+	return slices.DeleteFunc(slices.Clone(block), func(l string) bool { return present[l] })
 }
 
 // takeItem copies the list item at i with its child lines, checked when done.
@@ -259,42 +261,18 @@ func childLines(ls []string) int {
 
 func checked(line string) string { return strings.Replace(line, "- [ ] ", "- [x] ", 1) }
 
-// syncLinks checks finished tasks and appends the links the section lacks.
-// They go after the last content of the day: before the end-of-day heading when
-// the section closes with one, else before the blank lines that close it.
-// A closing gen end marker is skipped like those blank lines.
-func syncLinks(section []string, links []Link) []string {
-	out := append([]string{}, section...)
-	var missing []string
-	for _, k := range links {
-		i := indexContaining(out, k.target())
-		if i < 0 {
-			missing = append(missing, k.Line())
+// checkDone checks the links of the finished tasks at paths.
+func checkDone(section, paths []string) []string {
+	out := slices.Clone(section)
+	for i, l := range out {
+		if !strings.Contains(l, "- [ ] ") {
 			continue
 		}
-		if k.Done {
-			out[i] = checked(out[i])
+		if slices.ContainsFunc(paths, func(p string) bool { return strings.Contains(l, target(p)) }) {
+			out[i] = checked(l)
 		}
 	}
-	at := len(out)
-	for at > 0 && strings.TrimSpace(out[at-1]) == "" {
-		at--
-	}
-	if at > 0 && out[at-1] == blockEnd {
-		at--
-	}
-	for at > 0 && strings.TrimSpace(out[at-1]) == "" {
-		at--
-	}
-	if at > 0 && timelog.IsEnd(out[at-1]) {
-		at--
-	}
-	for at > 0 && strings.TrimSpace(out[at-1]) == "" {
-		at--
-	}
-	res := append([]string{}, out[:at]...)
-	res = append(res, missing...)
-	return append(res, out[at:]...)
+	return out
 }
 
 func indexContaining(ls []string, s string) int {

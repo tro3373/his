@@ -3,6 +3,7 @@ package gen
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func lines(s ...string) string { return strings.Join(s, "\n") + "\n" }
@@ -37,137 +38,115 @@ func TestRenderDay(t *testing.T) {
 }
 
 func TestMergeDay(t *testing.T) {
-	block := []string{
-		"### 20261030_100000 ALPHA 2h",
-		"- [x] [x](tasks/a/x/index.md)",
-		"### 20261030_120000",
-	}
+	head := "## 2026-10-30 (金)"
+	link := "- [x] [x](tasks/a/x/index.md)"
+	block := []string{"### 20261030_100000 ALPHA 2h", link, "### 20261030_120000"}
 	links := []Link{{Path: "tasks/a/x/index.md", Title: "x", Done: true}}
-	begin, end := markBlock(block)[0], blockEnd
-	oldBlock := []string{"### 20261030_100000 OLD 1h", "### 20261030_110000"}
-	oldBegin := markBlock(oldBlock)[0]
-	movedBlock := []string{"### 20261030_100000 ALPHA 2h", "- [x] [手で直した題名](tasks/a/x/index.md) メモ", "  - 子の項目", "### 20261030_120000"}
-	movedTitle := []string{"### 20261030_100000 ALPHA 2h", "- [x] [手で直した題名](tasks/a/x/index.md)", "### 20261030_120000"}
+	done := []string{"tasks/a/x/index.md"}
 	tests := []struct {
 		name    string
 		content string
+		block   []string // nil means the run has nothing to append
 		want    string
 	}{
 		{
 			name:    "日の節が無ければ日付順の位置に作ること",
 			content: lines("# Log", "", "## 2026-10-29 (木)", "- a", "", "## 2026-10-31 (土)", "- b"),
-			want: lines("# Log", "", "## 2026-10-29 (木)", "- a", "",
-				"## 2026-10-30 (金)", begin, "### 20261030_100000 ALPHA 2h", "- [x] [x](tasks/a/x/index.md)", "### 20261030_120000", end, "",
-				"## 2026-10-31 (土)", "- b"),
+			block:   block,
+			want:    lines("# Log", "", "## 2026-10-29 (木)", "- a", "", head, block[0], link, block[2], "", "## 2026-10-31 (土)", "- b"),
 		},
 		{
 			name:    "後ろの日が無ければ末尾に作ること",
 			content: lines("# Log", "", "## 2026-10-29 (木)", "- a"),
-			want: lines("# Log", "", "## 2026-10-29 (木)", "- a", "",
-				"## 2026-10-30 (金)", begin, "### 20261030_100000 ALPHA 2h", "- [x] [x](tasks/a/x/index.md)", "### 20261030_120000", end),
+			block:   block,
+			want:    lines("# Log", "", "## 2026-10-29 (木)", "- a", "", head, block[0], link, block[2]),
 		},
 		{
-			name:    "時刻の見出しが無い節には見出しを先頭に入れ_同じリンクは移し_他の行は残すこと",
-			content: lines("## 2026-10-30 (金)", "- [x] [x](tasks/a/x/index.md)", "- メモ", "", "## 2026-10-31 (土)"),
-			want: lines("## 2026-10-30 (金)", begin, "### 20261030_100000 ALPHA 2h", "- [x] [x](tasks/a/x/index.md)", "### 20261030_120000", end,
-				"- メモ", "", "## 2026-10-31 (土)"),
+			name:    "日の節が無く追記も無ければ節を作らないこと",
+			content: lines("# Log"),
+			want:    lines("# Log"),
 		},
 		{
-			name:    "時刻の見出しがある節には見出しを足さず_無いリンクを節の末尾に足すこと",
-			content: lines("## 2026-10-30 (金)", "### 20261030_090000 ALPHA 手書き", "- メモ", "", "## 2026-10-31 (土)"),
-			want:    lines("## 2026-10-30 (金)", "### 20261030_090000 ALPHA 手書き", "- メモ", "- [x] [x](tasks/a/x/index.md)", "", "## 2026-10-31 (土)"),
-		},
-		{
-			name: "時刻の見出しがある節では足りないリンクを終業の見出しの前に足すこと",
-			content: lines("## 2026-10-30 (金)", "### 20261030_090000 ALPHA 手書き", "- メモ", "", "### 20261030_190000", "",
-				"## 2026-10-31 (土)"),
-			want: lines("## 2026-10-30 (金)", "### 20261030_090000 ALPHA 手書き", "- メモ", "- [x] [x](tasks/a/x/index.md)", "",
-				"### 20261030_190000", "", "## 2026-10-31 (土)"),
+			name:    "時刻の見出しが無い節には先頭に書き_同じリンクは移し_他の行は残すこと",
+			content: lines(head, "- [x] [x](tasks/a/x/index.md)", "- メモ", "", "## 2026-10-31 (土)"),
+			block:   block,
+			want:    lines(head, block[0], link, block[2], "- メモ", "", "## 2026-10-31 (土)"),
 		},
 		{
 			name:    "時刻の見出しが無い節でリンクを移すとき_手書きの題名と子の項目を残すこと",
-			content: lines("## 2026-10-30 (金)", "- [ ] [手で直した題名](tasks/a/x/index.md) メモ", "  - 子の項目", "- 別のメモ"),
-			want:    lines(append(append([]string{"## 2026-10-30 (金)"}, markBlock(movedBlock)...), "- 別のメモ")...),
+			content: lines(head, "- [ ] [手で直した題名](tasks/a/x/index.md) メモ", "  - 子の項目", "- 別のメモ"),
+			block:   block,
+			want:    lines(head, block[0], "- [x] [手で直した題名](tasks/a/x/index.md) メモ", "  - 子の項目", block[2], "- 別のメモ"),
+		},
+		{
+			name:    "見出しがある節では確定済みの行を変えず_内容の末尾に追記すること",
+			content: lines(head, "### 20261030_090000 ALPHA 手書き", "- メモ", "", "## 2026-10-31 (土)"),
+			block:   block,
+			want:    lines(head, "### 20261030_090000 ALPHA 手書き", "- メモ", block[0], link, block[2], "", "## 2026-10-31 (土)"),
+		},
+		{
+			name:    "最新が終業見出しで同じ時刻から書くなら置き換えること",
+			content: lines(head, "### 20261030_090000 ALPHA 1h", "### 20261030_100000"),
+			block:   block,
+			want:    lines(head, "### 20261030_090000 ALPHA 1h", block[0], link, block[2]),
+		},
+		{
+			name:    "最新が終業見出しで後の時刻から書くなら休憩として残すこと",
+			content: lines(head, "### 20261030_080000 ALPHA 1h", "### 20261030_090000"),
+			block:   block,
+			want:    lines(head, "### 20261030_080000 ALPHA 1h", "### 20261030_090000", block[0], link, block[2]),
+		},
+		{
+			name:    "節にあるリンクは追記で重ねないこと",
+			content: lines(head, "### 20261030_090000 ALPHA 手書き", "- [x] [手で直した題名](tasks/a/x/index.md)"),
+			block:   block,
+			want:    lines(head, "### 20261030_090000 ALPHA 手書き", "- [x] [手で直した題名](tasks/a/x/index.md)", block[0], block[2]),
+		},
+		{
+			name:    "追記が無くても確定済みの未完了リンクは完了にすること",
+			content: lines(head, "### 20261030_090000 ALPHA 手書き", "- [ ] [手で直した題名](tasks/a/x/index.md)"),
+			want:    lines(head, "### 20261030_090000 ALPHA 手書き", "- [x] [手で直した題名](tasks/a/x/index.md)"),
 		},
 		{
 			name: "# で始まる行があっても日の節は次の日の見出しまで続くこと",
-			content: lines("## 2026-10-30 (金)", "### 20261030_090000 ALPHA 手書き", "```sh", "# => /run/user/1000", "```",
+			content: lines(head, "### 20261030_090000 ALPHA 手書き", "```sh", "# => /run/user/1000", "```",
 				"## 2026-10-31 (土)"),
-			want: lines("## 2026-10-30 (金)", "### 20261030_090000 ALPHA 手書き", "```sh", "# => /run/user/1000", "```",
-				"- [x] [x](tasks/a/x/index.md)", "## 2026-10-31 (土)"),
-		},
-		{
-			name:    "時刻の見出しがある節で未完了のリンクは完了にすること",
-			content: lines("## 2026-10-30 (金)", "### 20261030_090000 ALPHA 手書き", "- [ ] [手で直した題名](tasks/a/x/index.md)"),
-			want:    lines("## 2026-10-30 (金)", "### 20261030_090000 ALPHA 手書き", "- [x] [手で直した題名](tasks/a/x/index.md)"),
-		},
-		{
-			name: "手を入れていない gen の区画は新しい区画に置き換え_前後の行は残すこと",
-			content: lines("## 2026-10-30 (金)", "- 前", oldBegin, "### 20261030_100000 OLD 1h", "### 20261030_110000", end, "- 後", "",
+			block: block,
+			want: lines(head, "### 20261030_090000 ALPHA 手書き", "```sh", "# => /run/user/1000", "```", block[0], link, block[2],
 				"## 2026-10-31 (土)"),
-			want: lines("## 2026-10-30 (金)", "- 前", begin, "### 20261030_100000 ALPHA 2h", "- [x] [x](tasks/a/x/index.md)", "### 20261030_120000", end,
-				"- 後", "", "## 2026-10-31 (土)"),
-		},
-		{
-			name:    "手を入れた区画は残し_足りないリンクを区画内の終業の見出しの前に足すこと",
-			content: lines("## 2026-10-30 (金)", oldBegin, "### 20261030_100000 OLD 手直し", "### 20261030_110000", end),
-			want:    lines("## 2026-10-30 (金)", oldBegin, "### 20261030_100000 OLD 手直し", "- [x] [x](tasks/a/x/index.md)", "### 20261030_110000", end),
-		},
-		{
-			name:    "手を入れた区画の未完了リンクは完了にすること",
-			content: lines("## 2026-10-30 (金)", oldBegin, "### 20261030_100000 OLD 手直し", "- [ ] [x](tasks/a/x/index.md)", "### 20261030_110000", end),
-			want:    lines("## 2026-10-30 (金)", oldBegin, "### 20261030_100000 OLD 手直し", "- [x] [x](tasks/a/x/index.md)", "### 20261030_110000", end),
-		},
-		{
-			name:    "終わりの印が無い区画は手を入れたものとして残すこと",
-			content: lines("## 2026-10-30 (金)", oldBegin, "### 20261030_100000 OLD 1h", "### 20261030_110000"),
-			want:    lines("## 2026-10-30 (金)", oldBegin, "### 20261030_100000 OLD 1h", "- [x] [x](tasks/a/x/index.md)", "### 20261030_110000"),
-		},
-		{
-			name:    "時刻の見出しが無くても中身が印の hash と合わない区画は手を入れたものとして残すこと",
-			content: lines("## 2026-10-30 (金)", oldBegin, "- メモ", end),
-			want:    lines("## 2026-10-30 (金)", oldBegin, "- メモ", "- [x] [x](tasks/a/x/index.md)", end),
-		},
-		{
-			name:    "時刻の見出しが無くても終わりの印が無い区画は手を入れたものとして残すこと",
-			content: lines("## 2026-10-30 (金)", oldBegin, "- メモ"),
-			want:    lines("## 2026-10-30 (金)", oldBegin, "- メモ", "- [x] [x](tasks/a/x/index.md)"),
-		},
-		{
-			name:    "手を入れていない区画の外に同じタスクのリンクがあれば新しい区画へ移すこと",
-			content: lines("## 2026-10-30 (金)", "- [ ] [手で直した題名](tasks/a/x/index.md)", oldBegin, "### 20261030_100000 OLD 1h", "### 20261030_110000", end, "- 後"),
-			want:    lines(append(append([]string{"## 2026-10-30 (金)"}, markBlock(movedTitle)...), "- 後")...),
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := MergeDay(tt.content, at(0, 0), block, links)
+			got := MergeDay(tt.content, at(0, 0), tt.block, links, done)
 			if got != tt.want {
 				t.Errorf("MergeDay() =\n%s\nwant\n%s", got, tt.want)
-			}
-			if again := MergeDay(got, at(0, 0), block, links); again != got {
-				t.Errorf("MergeDay() is not idempotent:\n%s", again)
 			}
 		})
 	}
 }
 
-func TestMergeDay_replaceKeepsMovedItems(t *testing.T) {
-	links := []Link{{Path: "tasks/a/x/index.md", Title: "x", Segment: 0}}
-	block := func(head string) []string {
-		return []string{head, links[0].Line(), "### 20261030_120000"}
+func TestSettledUntil(t *testing.T) {
+	head := "## 2026-10-30 (金)"
+	tests := []struct {
+		name    string
+		content string
+		want    time.Time
+	}{
+		{name: "日の節が無ければゼロにすること", content: lines("# Log")},
+		{name: "見出しが無い節はゼロにすること", content: lines(head, "- メモ")},
+		{name: "終業見出しならその時刻にすること", content: lines(head, "### 20261030_100000 A 1h", "### 20261030_110000"), want: at(11, 0)},
+		{name: "時間付きの見出しならその時間の後にすること", content: lines(head, "### 20261030_100000 A 1h B 0.5h"), want: at(11, 30)},
+		{name: "時間の無い見出しなら次の quarter にすること", content: lines(head, "### 20261030_100500 手書き"), want: at(10, 15)},
+		{name: "並びでなく最も遅い時刻の見出しで決めること", content: lines(head, "### 20261030_150000", "### 20261030_100000 A 1h"), want: at(15, 0)},
+		{name: "別の日の節を見ないこと", content: lines("## 2026-10-29 (木)", "### 20261029_100000", head, "- メモ")},
 	}
-	first, second := block("### 20261030_100000 ALPHA 2h"), block("### 20261030_100000 BETA 3h")
-	content := lines("## 2026-10-30 (金)", "- [ ] [手で直した題名](tasks/a/x/index.md) メモ", "  - 子の項目")
-	moved := []string{"### 20261030_100000 BETA 3h", "- [ ] [手で直した題名](tasks/a/x/index.md) メモ", "  - 子の項目", "### 20261030_120000"}
-	want := lines(append([]string{"## 2026-10-30 (金)"}, markBlock(moved)...)...)
-
-	got := MergeDay(MergeDay(content, at(0, 0), first, links), at(0, 0), second, links)
-	if got != want {
-		t.Errorf("MergeDay() =\n%s\nwant\n%s", got, want)
-	}
-	if again := MergeDay(got, at(0, 0), second, links); again != got {
-		t.Errorf("MergeDay() is not idempotent:\n%s", again)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := SettledUntil(tt.content, at(0, 0)); !got.Equal(tt.want) {
+				t.Errorf("SettledUntil() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 

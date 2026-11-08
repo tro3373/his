@@ -88,7 +88,7 @@ func (c Config) Validate() error {
 const meetingTagWindow = 30 * time.Minute
 
 // Run writes the days of every log; logDates tells which.
-// A day nobody edited by hand is rewritten, a hand-edited one only gets task links.
+// A day is only added to: what follows its latest time heading is appended.
 // A zero target writes each log from yesterday, or from an older newest written day, through today.
 // Any other target is that day only.
 // Every day ends no later than cfg.Lag before now.
@@ -123,6 +123,7 @@ func Run(cfg Config, now, target time.Time, w io.Writer) error {
 		}
 	}
 	owner := taskOwners(cfg.Logs, acts)
+	done := finishedPaths(tasks)
 
 	for i, l := range cfg.Logs {
 		dates := []time.Time{since}
@@ -135,13 +136,20 @@ func Run(cfg Config, now, target time.Time, w io.Writer) error {
 		for _, d := range dates {
 			dayActs := between(acts[i], d, d.AddDate(0, 0, 1))
 			meets := meetingsOf(recs, l.Apps, d, dayActs)
-			day, ok := PlanDay(d, rules, dayActs, meets)
-			if !ok {
-				continue
+			path, content, err := monthFile(l.Dir, d)
+			if err != nil {
+				return err
 			}
-			links := linksOf(tasks, day, dayActs, d, func(t Task) bool { return owner(t.Repo) == i })
-			block := RenderDay(day, links)
-			if err := writeDay(l.Dir, d, block, links, w); err != nil {
+			dayRules := rules
+			dayRules.From = SettledUntil(content, d)
+			var block []string
+			var links []Link
+			if day, ok := PlanDay(d, dayRules, dayActs, meets); ok {
+				from := maxTime(d, dayRules.From)
+				links = linksOf(tasks, day, between(dayActs, from, d.AddDate(0, 0, 1)), from, func(t Task) bool { return owner(t.Repo) == i })
+				block = RenderDay(day, links)
+			}
+			if err := writeDay(path, content, d, block, links, done, w); err != nil {
 				return err
 			}
 		}
@@ -267,18 +275,29 @@ func dominantTag(acts []Activity) string {
 	return best
 }
 
-// linksOf lists the day's tasks: the ones whose branch had session activity that
+// finishedPaths is where the finished tasks are, as the logs link them.
+func finishedPaths(tasks []Task) []string {
+	var out []string
+	for _, t := range tasks {
+		if t.Done {
+			out = append(out, t.Path)
+		}
+	}
+	return out
+}
+
+// linksOf lists the tasks of the day from from on: the ones whose branch had session activity that
 // day, and the ones split that day that belong to this log.
 // Each goes under the segment where its branch was most active, else under the
 // segment it was split in, else under the last segment that is not lunch.
-func linksOf(tasks []Task, day Day, dayActs []Activity, date time.Time, ownTask func(Task) bool) []Link {
-	next := date.AddDate(0, 0, 1)
+func linksOf(tasks []Task, day Day, dayActs []Activity, from time.Time, ownTask func(Task) bool) []Link {
+	next := midnight(from).AddDate(0, 0, 1)
 	var picked []Task
 	for _, t := range tasks {
 		worked := t.Branch != "" && slices.ContainsFunc(dayActs, func(a Activity) bool {
 			return a.Repo == t.Repo && a.Branch == t.Branch
 		})
-		created := within(t.Created, date, next) && ownTask(t)
+		created := within(t.Created, from, next) && ownTask(t)
 		if worked || created {
 			picked = append(picked, t)
 		}
@@ -336,12 +355,8 @@ func segmentIndex(day Day, at time.Time) int {
 	return -1
 }
 
-func writeDay(dir string, date time.Time, block []string, links []Link, w io.Writer) error {
-	path, content, err := monthFile(dir, date)
-	if err != nil {
-		return err
-	}
-	merged := MergeDay(content, date, block, links)
+func writeDay(path, content string, date time.Time, block []string, links []Link, done []string, w io.Writer) error {
+	merged := MergeDay(content, date, block, links, done)
 	if merged == content {
 		return nil
 	}

@@ -86,6 +86,7 @@ type DayRules struct {
 	Lunch   Lunch
 	MinIdle time.Duration // how long a stretch without activity, lunch aside, must last to be a break
 	Limit   time.Time     // the day ends no later than this, truncated to the quarter hour
+	From    time.Time     // the settled part ends here; zero when nothing is settled
 }
 
 // PlanDay splits the day into segments.
@@ -96,19 +97,28 @@ type DayRules struct {
 // among projects by how many 10 minute bins each had activity in.
 // An idle stretch is rules.MinIdle or more, lunch aside, without activity or meeting:
 // it becomes a break rather than work made up from the day's share.
-// It returns false when nothing in the day counts as work or meeting.
+// Only what follows rules.From is planned, so a rerun adds to the settled part:
+// it returns false until an hour has passed since rules.From, which keeps a log
+// to one new heading an hour, and when no hour of activity or meeting follows it.
+// It also returns false when nothing in the day counts as work or meeting.
 func PlanDay(date time.Time, rules DayRules, acts []Activity, meets []Meeting) (Day, bool) {
+	acts = between(acts, rules.From, midnight(date).AddDate(0, 0, 1))
+	meets = meetingsEndingAfter(meets, rules.From)
 	if len(acts) == 0 && len(meets) == 0 {
 		return Day{}, false
 	}
 	day0 := midnight(date)
 	limit := rules.Limit.Truncate(quarter)
+	if limit.Sub(rules.From) < time.Hour {
+		return Day{}, false
+	}
 	p := dayPlan{
 		lunch0:  day0.Add(time.Duration(rules.Lunch.Start)),
 		lunch1:  day0.Add(time.Duration(rules.Lunch.End)),
 		minIdle: rules.MinIdle,
 	}
 	start, end := span(acts, meets, date.Location())
+	start = maxTime(start, rules.From)
 	if within(start, p.lunch0, p.lunch1) {
 		start = p.lunch1
 	}
@@ -121,6 +131,9 @@ func PlanDay(date time.Time, rules DayRules, acts []Activity, meets []Meeting) (
 	}
 	if end.After(p.lunch0) && !end.After(p.lunch1) && start.Before(p.lunch0) {
 		end = p.lunch0
+	}
+	if !end.After(rules.From) {
+		return Day{}, false
 	}
 	if !end.After(start) {
 		end = minTime(start.Add(time.Hour), limit)
@@ -187,6 +200,17 @@ func span(acts []Activity, meets []Meeting, loc *time.Location) (time.Time, time
 		stretch(m.Start.In(loc).Truncate(quarter), m.End.In(loc).Truncate(quarter))
 	}
 	return first, last
+}
+
+func meetingsEndingAfter(meets []Meeting, from time.Time) []Meeting {
+	var out []Meeting
+	for _, m := range meets {
+		if !m.End.Truncate(quarter).After(from) {
+			continue
+		}
+		out = append(out, m)
+	}
+	return out
 }
 
 type slot struct {
