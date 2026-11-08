@@ -20,7 +20,8 @@ var genCmd = &cobra.Command{
 
 Without an argument, writes each log from yesterday, or from an older newest
 day that already has a time heading, through today.
-It starts 30 days back when no day has one.
+It starts catch_up_days back when no day has one.
+A day ends no later than lag before now.
 Days before the start are not touched.
 A block nobody edited by hand is rewritten on every run;
 a hand-edited day only gets task links.
@@ -34,6 +35,9 @@ Config (~/.his):
       - ~/.claude/projects
       - ~/work/.claude/projects
     lunch: {start: "12:00", end: "13:00"}
+    lag: 30m                          # optional; 0s writes up to now
+    catch_up_days: 30                 # optional
+    min_idle: 1h                      # optional; a shorter gap is not a break
     logs:
       - name: work
         dir: ~/notes/work
@@ -83,8 +87,9 @@ func parseTarget(args []string, now time.Time) (time.Time, error) {
 }
 
 func loadGenConfig() (gen.Config, error) {
-	var cfg gen.Config
+	cfg := gen.DefaultConfig()
 	hooks := viper.DecodeHook(mapstructure.ComposeDecodeHookFunc(
+		mapstructure.StringToTimeDurationHookFunc(),
 		mapstructure.TextUnmarshallerHookFunc(),
 		mapstructure.StringToSliceHookFunc(","),
 	))

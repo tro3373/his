@@ -20,6 +20,16 @@ type Config struct {
 	Sessions  []string    `mapstructure:"sessions"`   // <CLAUDE_CONFIG_DIR>/projects of every config dir
 	Lunch     Lunch       `mapstructure:"lunch"`
 	Logs      []LogConfig `mapstructure:"logs"`
+
+	Lag         time.Duration `mapstructure:"lag"`           // a day ends no later than this long before now
+	CatchUpDays int           `mapstructure:"catch_up_days"` // how far back a run without a date looks
+	MinIdle     time.Duration `mapstructure:"min_idle"`      // how long a stretch without activity must last to be a break
+}
+
+// DefaultConfig is the Config a config file overrides key by key.
+// CatchUpDays matches Claude Code deleting session logs after 30 days (cleanupPeriodDays).
+func DefaultConfig() Config {
+	return Config{Lag: 30 * time.Minute, CatchUpDays: 30, MinIdle: time.Hour}
 }
 
 // LogConfig is one log to write.
@@ -50,6 +60,15 @@ func (c Config) Validate() error {
 	if len(c.Logs) == 0 {
 		errs = append(errs, errors.New("gen.logs is empty"))
 	}
+	if c.Lag < 0 {
+		errs = append(errs, errors.New("gen.lag is negative"))
+	}
+	if c.CatchUpDays < 0 {
+		errs = append(errs, errors.New("gen.catch_up_days is negative"))
+	}
+	if c.MinIdle <= 0 {
+		errs = append(errs, errors.New("gen.min_idle must be positive"))
+	}
 	defaults := 0
 	for _, l := range c.Logs {
 		if l.Dir == "" {
@@ -65,10 +84,6 @@ func (c Config) Validate() error {
 	return errors.Join(errs...)
 }
 
-// catchUpDays is how far back a run without a date looks.
-// Claude Code deletes session logs after 30 days (cleanupPeriodDays).
-const catchUpDays = 30
-
 // meetingTagWindow is how far around a call the session activity decides its project.
 const meetingTagWindow = 30 * time.Minute
 
@@ -76,10 +91,12 @@ const meetingTagWindow = 30 * time.Minute
 // A day nobody edited by hand is rewritten, a hand-edited one only gets task links.
 // A zero target writes each log from yesterday, or from an older newest written day, through today.
 // Any other target is that day only.
+// Every day ends no later than cfg.Lag before now.
 func Run(cfg Config, now, target time.Time, w io.Writer) error {
 	loc := now.Location()
 	today := midnight(now)
-	since := today.AddDate(0, 0, -catchUpDays)
+	rules := DayRules{Lunch: cfg.Lunch, MinIdle: cfg.MinIdle, Limit: now.Add(-cfg.Lag)}
+	since := today.AddDate(0, 0, -cfg.CatchUpDays)
 	if !target.IsZero() {
 		since = midnight(target)
 	}
@@ -110,7 +127,7 @@ func Run(cfg Config, now, target time.Time, w io.Writer) error {
 	for i, l := range cfg.Logs {
 		dates := []time.Time{since}
 		if target.IsZero() {
-			dates, err = logDates(l.Dir, today)
+			dates, err = logDates(l.Dir, today, cfg.CatchUpDays)
 			if err != nil {
 				return err
 			}
@@ -118,7 +135,7 @@ func Run(cfg Config, now, target time.Time, w io.Writer) error {
 		for _, d := range dates {
 			dayActs := between(acts[i], d, d.AddDate(0, 0, 1))
 			meets := meetingsOf(recs, l.Apps, d, dayActs)
-			day, ok := PlanDay(d, cfg.Lunch, dayActs, meets)
+			day, ok := PlanDay(d, rules, dayActs, meets)
 			if !ok {
 				continue
 			}
@@ -139,7 +156,7 @@ func Run(cfg Config, now, target time.Time, w io.Writer) error {
 // Yesterday is always included because the daily run at noon finishes it:
 // a day written by hand before that must not freeze it at half a day.
 // Days older than the start are never touched: their session logs may be gone already.
-func logDates(dir string, today time.Time) ([]time.Time, error) {
+func logDates(dir string, today time.Time, catchUpDays int) ([]time.Time, error) {
 	yesterday := today.AddDate(0, 0, -1)
 	start := today.AddDate(0, 0, -catchUpDays)
 	for i := 0; i <= catchUpDays; i++ {

@@ -81,33 +81,50 @@ type Lunch struct {
 	End   Clock `mapstructure:"end"`
 }
 
+// DayRules is what shapes a day besides its activity.
+type DayRules struct {
+	Lunch   Lunch
+	MinIdle time.Duration // how long a stretch without activity, lunch aside, must last to be a break
+	Limit   time.Time     // the day ends no later than this, truncated to the quarter hour
+}
+
 // PlanDay splits the day into segments.
-// The day starts and ends at the first and last activity, truncated to the hour.
+// The day starts and ends at the first and last activity, truncated to the hour,
+// and never ends after rules.Limit.
 // Lunch, meetings and idle stretches cut the day; every other stretch is shared
 // among projects by how many 10 minute bins each had activity in.
-// An idle stretch is an hour or more, lunch aside, without activity or meeting:
+// An idle stretch is rules.MinIdle or more, lunch aside, without activity or meeting:
 // it becomes a break rather than work made up from the day's share.
 // It returns false when nothing in the day counts as work or meeting.
-func PlanDay(date time.Time, lunch Lunch, acts []Activity, meets []Meeting) (Day, bool) {
+func PlanDay(date time.Time, rules DayRules, acts []Activity, meets []Meeting) (Day, bool) {
 	if len(acts) == 0 && len(meets) == 0 {
 		return Day{}, false
 	}
 	day0 := midnight(date)
-	p := dayPlan{lunch0: day0.Add(time.Duration(lunch.Start)), lunch1: day0.Add(time.Duration(lunch.End))}
+	limit := rules.Limit.Truncate(quarter)
+	p := dayPlan{
+		lunch0:  day0.Add(time.Duration(rules.Lunch.Start)),
+		lunch1:  day0.Add(time.Duration(rules.Lunch.End)),
+		minIdle: rules.MinIdle,
+	}
 	start, end := span(acts, meets, date.Location())
 	if within(start, p.lunch0, p.lunch1) {
 		start = p.lunch1
 	}
+	if !start.Before(limit) {
+		return Day{}, false
+	}
+	end = minTime(end, limit)
 	if end.After(p.lunch0) && !end.After(p.lunch1) && start.Before(p.lunch0) {
 		end = p.lunch0
 	}
 	if !end.After(start) {
-		end = start.Add(time.Hour)
+		end = minTime(start.Add(time.Hour), limit)
 	}
 	p.meetings = meetingSlots(meets, start, end)
 	p.bins = binActivities(acts, p.lunch0, p.lunch1)
 	p.idle = p.idleSlots(start, end)
-	p.dayWeights = weigh(p.bins, time.Time{}, end.Add(24*time.Hour))
+	p.dayWeights = weigh(p.bins, time.Time{}, limit)
 
 	var segs []Segment
 	for _, c := range p.cuts(start, end) {
@@ -138,6 +155,7 @@ func PlanDay(date time.Time, lunch Lunch, acts []Activity, meets []Meeting) (Day
 // dayPlan holds what PlanDay derives once and every segment looks up.
 type dayPlan struct {
 	lunch0, lunch1 time.Time
+	minIdle        time.Duration
 	meetings       []slot
 	idle           []interval
 	bins           map[time.Time][]string
@@ -191,9 +209,6 @@ func meetingSlots(meets []Meeting, start, end time.Time) []slot {
 
 type interval struct{ from, to time.Time }
 
-// minIdle is how long a stretch without activity, lunch aside, must last to be a break.
-const minIdle = time.Hour
-
 // idleSlots finds the breaks between activity: gaps of minIdle or more between
 // the bins and meetings, rounded inward to quarter hours and clipped to the day.
 // The gap before the first activity is not one: the day starts at that activity.
@@ -211,7 +226,7 @@ func (p dayPlan) idleSlots(start, end time.Time) []interval {
 		from := ceilQuarter(busy[i].to)
 		to := busy[i+1].from.Truncate(quarter)
 		from, to = maxTime(from, start), minTime(to, end)
-		if to.Sub(from)-overlap(from, to, p.lunch0, p.lunch1) < minIdle {
+		if to.Sub(from)-overlap(from, to, p.lunch0, p.lunch1) < p.minIdle {
 			continue
 		}
 		out = append(out, interval{from, to})

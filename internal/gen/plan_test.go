@@ -22,7 +22,8 @@ func TestPlanDay(t *testing.T) {
 	date := at(0, 0)
 	tests := []struct {
 		name  string
-		lunch Lunch // zero means noon
+		lunch Lunch     // zero means noon
+		limit time.Time // zero means the end of the day
 		acts  []Activity
 		meets []Meeting
 		want  Day
@@ -156,10 +157,62 @@ func TestPlanDay(t *testing.T) {
 			name: "活動も会議も無い日は書かないこと",
 			ok:   false,
 		},
+		{
+			name:  "活動が上限を越えて続く日は上限を15分に切り下げた時刻で終わること",
+			limit: at(10, 50),
+			acts:  []Activity{act("A", 9, 10), act("A", 10, 20), act("A", 11, 40)},
+			ok:    true,
+			want: Day{
+				Segments: []Segment{{Start: at(9, 0), Kind: KindWork, Hours: []TagHours{{"A", 7}}}},
+				End:      at(10, 45),
+			},
+		},
+		{
+			name:  "上限より前に終えた日は上限に関わらず最後の活動で終わること",
+			limit: at(10, 50),
+			acts:  []Activity{act("A", 8, 10), act("A", 9, 20)},
+			ok:    true,
+			want: Day{
+				Segments: []Segment{{Start: at(8, 0), Kind: KindWork, Hours: []TagHours{{"A", 4}}}},
+				End:      at(9, 0),
+			},
+		},
+		{
+			name:  "1時間に満たない日の補いは上限を越えないこと",
+			limit: at(9, 40),
+			acts:  []Activity{act("A", 9, 10)},
+			ok:    true,
+			want: Day{
+				Segments: []Segment{{Start: at(9, 0), Kind: KindWork, Hours: []TagHours{{"A", 2}}}},
+				End:      at(9, 30),
+			},
+		},
+		{
+			name:  "上限を越えた会議は上限で切ること",
+			limit: at(10, 30),
+			meets: []Meeting{{Start: at(10, 0), End: at(11, 0), Tag: "M", Title: "sync"}},
+			ok:    true,
+			want: Day{
+				Segments: []Segment{{Start: at(10, 0), Kind: KindMeeting, Hours: []TagHours{{"M", 2}}, Title: "sync"}},
+				End:      at(10, 30),
+			},
+		},
+		{
+			name:  "上限より後の活動しか無い日は書かないこと",
+			limit: at(9, 10),
+			acts:  []Activity{act("A", 9, 20)},
+			ok:    false,
+		},
+		{
+			name:  "上限の直後の活動を区間の配分に数えないこと",
+			limit: at(9, 15),
+			acts:  []Activity{act("A", 9, 20)},
+			ok:    false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, ok := PlanDay(date, cmp.Or(tt.lunch, noon), tt.acts, tt.meets)
+			got, ok := PlanDay(date, DayRules{Lunch: cmp.Or(tt.lunch, noon), MinIdle: time.Hour, Limit: cmp.Or(tt.limit, at(23, 59))}, tt.acts, tt.meets)
 			if ok != tt.ok {
 				t.Fatalf("PlanDay() ok = %v, want %v", ok, tt.ok)
 			}

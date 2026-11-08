@@ -47,6 +47,7 @@ func TestRun(t *testing.T) {
 		RecDir:    filepath.Join(root, "rec"),
 		Sessions:  []string{filepath.Join(root, "work/projects"), filepath.Join(root, "personal/projects")},
 		Lunch:     noon,
+		MinIdle:   time.Hour,
 		Logs: []LogConfig{
 			{Name: "work", Dir: filepath.Join(root, "notes/work"), Roots: []string{filepath.Join(root, "src")}, Apps: []string{"slack", "zoom"}},
 			{Name: "personal", Dir: filepath.Join(root, "notes/personal"), Apps: []string{"chrome"}, Default: true},
@@ -189,10 +190,12 @@ func TestRun_target(t *testing.T) {
 				write(t, filepath.Join(root, "notes/work/2026", name), content)
 			}
 			cfg := Config{
-				StoreRoot: cwd,
-				Sessions:  []string{filepath.Join(root, "work/projects")},
-				Lunch:     noon,
-				Logs:      []LogConfig{{Name: "work", Dir: filepath.Join(root, "notes/work"), Default: true}},
+				StoreRoot:   cwd,
+				Sessions:    []string{filepath.Join(root, "work/projects")},
+				Lunch:       noon,
+				MinIdle:     time.Hour,
+				CatchUpDays: 30,
+				Logs:        []LogConfig{{Name: "work", Dir: filepath.Join(root, "notes/work"), Default: true}},
 			}
 			if err := Run(cfg, now, tt.target, io.Discard); err != nil {
 				t.Fatal(err)
