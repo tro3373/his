@@ -1,6 +1,9 @@
 package cmd
 
 import (
+	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -16,6 +19,9 @@ func TestLoadGenConfig(t *testing.T) {
 		wantDays  int
 		wantIdle  time.Duration
 		wantErr   bool
+		wantDir   string   // under home; empty means the default
+		wantSkip  []string // "~" stands for home; nil with noSkip unset means the default ~
+		noSkip    bool
 	}{
 		{name: "未設定の場合_既定値になること", wantLag: 30 * time.Minute, wantDays: 30, wantIdle: time.Hour},
 		{
@@ -31,9 +37,16 @@ func TestLoadGenConfig(t *testing.T) {
 		{name: "lagが負の場合_エラーになること", overrides: map[string]any{"lag": "-1m"}, wantErr: true},
 		{name: "min_idleが0の場合_エラーになること", overrides: map[string]any{"min_idle": "0s"}, wantErr: true},
 		{name: "catch_up_daysが負の場合_エラーになること", overrides: map[string]any{"catch_up_days": -1}, wantErr: true},
+		{name: "ignoreが未設定の場合_既定の~をホームに展開すること", wantLag: 30 * time.Minute, wantDays: 30, wantIdle: time.Hour},
+		{name: "ignoreが空の場合_空になること", overrides: map[string]any{"activity": map[string]any{"ignore": []string{}}}, noSkip: true, wantLag: 30 * time.Minute, wantDays: 30, wantIdle: time.Hour},
+		{name: "ignoreを指定した場合_指定だけになること", overrides: map[string]any{"activity": map[string]any{"ignore": []string{"/tmp"}}}, wantSkip: []string{"/tmp"}, wantLag: 30 * time.Minute, wantDays: 30, wantIdle: time.Hour},
+		{name: "activityのdirに~を使った場合_ホームに展開すること", overrides: map[string]any{"activity": map[string]any{"dir": "~/act"}}, wantDir: "act", wantLag: 30 * time.Minute, wantDays: 30, wantIdle: time.Hour},
+		{name: "retention_daysがcatch_up_daysより短い場合_エラーになること", overrides: map[string]any{"activity": map[string]any{"retention_days": 29}}, wantErr: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("HOME", home)
 			viper.Reset()
 			t.Cleanup(viper.Reset)
 			section := map[string]any{
@@ -53,6 +66,23 @@ func TestLoadGenConfig(t *testing.T) {
 			}
 			if tt.wantErr {
 				return
+			}
+			wantSkip := make([]string, 0, len(tt.wantSkip))
+			if tt.wantSkip == nil && !tt.noSkip {
+				tt.wantSkip = []string{"~"}
+			}
+			for _, p := range tt.wantSkip {
+				wantSkip = append(wantSkip, strings.Replace(p, "~", home, 1))
+			}
+			if !slices.Equal(got.Activity.Ignore, wantSkip) {
+				t.Errorf("Activity.Ignore = %v, want %v", got.Activity.Ignore, wantSkip)
+			}
+			wantDir := filepath.Join(home, ".local/state/his/activity")
+			if tt.wantDir != "" {
+				wantDir = filepath.Join(home, tt.wantDir)
+			}
+			if got.Activity.Dir != wantDir {
+				t.Errorf("Activity.Dir = %q, want %q", got.Activity.Dir, wantDir)
 			}
 			want := gen.Config{Lag: tt.wantLag, CatchUpDays: tt.wantDays, MinIdle: tt.wantIdle}
 			if got.Lag != want.Lag || got.CatchUpDays != want.CatchUpDays || got.MinIdle != want.MinIdle {

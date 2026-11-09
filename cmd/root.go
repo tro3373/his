@@ -100,12 +100,12 @@ func getGlobPatternSetting() string {
 }
 
 func expandTilde(path string) (string, error) {
-	if !strings.HasPrefix(path, "~/") {
+	if path != "~" && !strings.HasPrefix(path, "~/") {
 		return path, nil
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, path[2:]), nil
+	return filepath.Join(home, path[1:]), nil
 }
