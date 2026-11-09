@@ -198,6 +198,17 @@ func TestParseTask(t *testing.T) {
 			ok: true,
 		},
 		{
+			name:    "ended を読むこと",
+			rel:     "tasks/backend/20261030-144224_x/task.md",
+			content: "---\nstatus: done\nbranch: main\nended: 2026-10-30T18:00:00+09:00\n---\n",
+			want: Task{
+				Path: "tasks/backend/20261030-144224_x/task.md", Title: "20261030-144224_x",
+				Repo: "backend", Branch: "main", Done: true, Created: time.Date(2026, 10, 30, 14, 42, 24, 0, jst),
+				Ended: time.Date(2026, 10, 30, 18, 0, 0, 0, jst),
+			},
+			ok: true,
+		},
+		{
 			name: "日時で始まらないディレクトリはタスクとして扱わないこと",
 			rel:  "tasks/backend/index.md", content: "- [ ] a\n",
 			ok: false,
@@ -236,6 +247,35 @@ func TestReadTasks(t *testing.T) {
 			}
 			if len(got) != 1 || got[0].Path != rel {
 				t.Errorf("ReadTasks() = %+v, want one task at %s", got, rel)
+			}
+		})
+	}
+}
+
+func TestTaskWorkedIn(t *testing.T) {
+	created := time.Date(2026, 11, 9, 10, 0, 0, 0, jst)
+	ended := time.Date(2026, 11, 9, 18, 0, 0, 0, jst)
+	open := Task{Repo: "r", Branch: "main", Created: created}
+	closed := Task{Repo: "r", Branch: "main", Created: created, Ended: ended}
+	tests := []struct {
+		name string
+		task Task
+		act  Activity
+		want bool
+	}{
+		{name: "作成の時刻の Activity は作業と数えること", task: closed, act: Activity{At: created, Repo: "r", Branch: "main"}, want: true},
+		{name: "終了の時刻の Activity は作業と数えること", task: closed, act: Activity{At: ended, Repo: "r", Branch: "main"}, want: true},
+		{name: "作成より前の Activity は作業と数えないこと", task: closed, act: Activity{At: created.Add(-time.Second), Repo: "r", Branch: "main"}},
+		{name: "終了より後の Activity は作業と数えないこと", task: closed, act: Activity{At: ended.Add(time.Second), Repo: "r", Branch: "main"}},
+		{name: "終了していなければ後の日の Activity も作業と数えること", task: open, act: Activity{At: ended.AddDate(0, 0, 3), Repo: "r", Branch: "main"}, want: true},
+		{name: "別の branch の Activity は作業と数えないこと", task: closed, act: Activity{At: created, Repo: "r", Branch: "x"}},
+		{name: "別の repo の Activity は作業と数えないこと", task: closed, act: Activity{At: created, Repo: "z", Branch: "main"}},
+		{name: "branch の無いタスクは作業と数えないこと", task: Task{Repo: "r", Created: created}, act: Activity{At: created, Repo: "r"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.task.workedIn(tt.act); got != tt.want {
+				t.Errorf("workedIn() = %v, want %v", got, tt.want)
 			}
 		})
 	}

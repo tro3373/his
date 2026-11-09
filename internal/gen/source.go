@@ -271,6 +271,17 @@ type Task struct {
 	Branch  string
 	Done    bool
 	Created time.Time
+	Ended   time.Time // zero while the task is open, and always for index.md
+}
+
+// workedIn reports whether a was work on this task: on its branch, while it was open.
+// The window matters for a branch that outlives a task, such as main:
+// without it every later and earlier day on that branch would list the task.
+func (t Task) workedIn(a Activity) bool {
+	if t.Branch == "" || a.Repo != t.Repo || a.Branch != t.Branch || a.At.Before(t.Created) {
+		return false
+	}
+	return t.Ended.IsZero() || !a.At.After(t.Ended)
 }
 
 const taskDirLayout = "20060102-150405"
@@ -327,6 +338,11 @@ func parseTask(rel string, content []byte, loc *time.Location) (Task, bool) {
 			t.Branch = v
 		case "status":
 			t.Done = isDoneStatus(v)
+		case "ended":
+			// An unparsable value leaves the task open: the link stays rather than vanishing.
+			if ended, err := time.Parse(time.RFC3339, v); err == nil {
+				t.Ended = ended.In(loc)
+			}
 		}
 	}
 	return t, true
