@@ -265,7 +265,7 @@ func minutesTitle(minutes []byte) string {
 
 // Task is a task directory split by the tasks command.
 type Task struct {
-	Path    string // relative to the store root: tasks/<repo>/<dir>/index.md
+	Path    string // relative to the store root: tasks/<repo>/<dir>/<one of taskFiles>
 	Title   string // the directory name
 	Repo    string
 	Branch  string
@@ -275,11 +275,19 @@ type Task struct {
 
 const taskDirLayout = "20060102-150405"
 
+// taskFiles are the names a task's file goes by: index.md from the tasks command,
+// task.md from task2.
+var taskFiles = []string{"index.md", "task.md"}
+
 // ReadTasks reads every task under storeRoot/tasks.
 func ReadTasks(storeRoot string, loc *time.Location) ([]Task, error) {
-	paths, err := filepath.Glob(filepath.Join(storeRoot, "tasks", "*", "*", "index.md"))
-	if err != nil {
-		return nil, err
+	var paths []string
+	for _, name := range taskFiles {
+		found, err := filepath.Glob(filepath.Join(storeRoot, "tasks", "*", "*", name))
+		if err != nil {
+			return nil, err
+		}
+		paths = append(paths, found...)
 	}
 	var tasks []Task
 	for _, p := range paths {
@@ -318,10 +326,15 @@ func parseTask(rel string, content []byte, loc *time.Location) (Task, bool) {
 		case "branch":
 			t.Branch = v
 		case "status":
-			t.Done = strings.Contains(v, "✅")
+			t.Done = isDoneStatus(v)
 		}
 	}
 	return t, true
+}
+
+// isDoneStatus reads the status of either task file: a check mark in index.md, "done" in task.md.
+func isDoneStatus(status string) bool {
+	return strings.Contains(status, "✅") || status == "done"
 }
 
 func frontMatter(content string) string {
