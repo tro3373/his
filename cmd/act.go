@@ -47,6 +47,9 @@ func runAct(now time.Time) error {
 // physicalPath resolves symlinks in dir, or returns dir unchanged when it cannot.
 // Claude Code records physical paths: a logical one would split a repository into two tags.
 func physicalPath(dir string) string {
+	if dir == "" {
+		return dir
+	}
 	resolved, err := filepath.EvalSymlinks(dir)
 	if err != nil {
 		return dir

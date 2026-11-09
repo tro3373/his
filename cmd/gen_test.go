@@ -35,6 +35,7 @@ func TestLoadGenConfig(t *testing.T) {
 			overrides: map[string]any{"lag": "0s"},
 			wantLag:   0, wantDays: 30, wantIdle: time.Hour,
 		},
+		{name: "ignoreに空の要素がある場合_エラーになること", overrides: map[string]any{"activity": map[string]any{"ignore": []any{nil}}}, wantErr: true},
 		{name: "lagが負の場合_エラーになること", overrides: map[string]any{"lag": "-1m"}, wantErr: true},
 		{name: "min_idleが0の場合_エラーになること", overrides: map[string]any{"min_idle": "0s"}, wantErr: true},
 		{name: "catch_up_daysが負の場合_エラーになること", overrides: map[string]any{"catch_up_days": -1}, wantErr: true},
