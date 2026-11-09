@@ -15,21 +15,33 @@ import (
 
 // Config is the "gen" section of the his config file.
 type Config struct {
-	StoreRoot string      `mapstructure:"store_root"` // holds tasks/; links are relative to it
-	RecDir    string      `mapstructure:"rec_dir"`    // rec's output directory
-	Sessions  []string    `mapstructure:"sessions"`   // <CLAUDE_CONFIG_DIR>/projects of every config dir
-	Lunch     Lunch       `mapstructure:"lunch"`
-	Logs      []LogConfig `mapstructure:"logs"`
+	StoreRoot string         `mapstructure:"store_root"` // holds tasks/; links are relative to it
+	RecDir    string         `mapstructure:"rec_dir"`    // rec's output directory
+	Sessions  []string       `mapstructure:"sessions"`   // <CLAUDE_CONFIG_DIR>/projects of every config dir
+	Lunch     Lunch          `mapstructure:"lunch"`
+	Logs      []LogConfig    `mapstructure:"logs"`
+	Activity  ActivityConfig `mapstructure:"activity"`
 
 	Lag         time.Duration `mapstructure:"lag"`           // a day ends no later than this long before now
 	CatchUpDays int           `mapstructure:"catch_up_days"` // how far back a run without a date looks
 	MinIdle     time.Duration `mapstructure:"min_idle"`      // how long a stretch without activity must last to be a break
 }
 
+// ActivityConfig is the "gen.activity" section: where shells and nvim append
+// the Activity log, and which of its working directories to leave out.
+type ActivityConfig struct {
+	Dir           string   `mapstructure:"dir"`
+	RetentionDays int      `mapstructure:"retention_days"` // older day files are deleted by gen
+	Ignore        []string `mapstructure:"ignore"`         // working directories excluded by exact match, not by prefix
+}
+
 // DefaultConfig is the Config a config file overrides key by key.
 // CatchUpDays matches Claude Code deleting session logs after 30 days (cleanupPeriodDays).
 func DefaultConfig() Config {
-	return Config{Lag: 30 * time.Minute, CatchUpDays: 30, MinIdle: time.Hour}
+	return Config{
+		Lag: 30 * time.Minute, CatchUpDays: 30, MinIdle: time.Hour,
+		Activity: ActivityConfig{Dir: "~/.local/state/his/activity", RetentionDays: 35, Ignore: []string{"~"}},
+	}
 }
 
 // LogConfig is one log to write.
@@ -68,6 +80,12 @@ func (c Config) Validate() error {
 	}
 	if c.MinIdle <= 0 {
 		errs = append(errs, errors.New("gen.min_idle must be positive"))
+	}
+	if c.Activity.Dir == "" {
+		errs = append(errs, errors.New("gen.activity.dir is empty"))
+	}
+	if c.Activity.RetentionDays < c.CatchUpDays {
+		errs = append(errs, fmt.Errorf("gen.activity.retention_days (%d) is shorter than gen.catch_up_days (%d)", c.Activity.RetentionDays, c.CatchUpDays))
 	}
 	defaults := 0
 	for _, l := range c.Logs {
@@ -110,16 +128,23 @@ func Run(cfg Config, now, target time.Time, w io.Writer) error {
 		return err
 	}
 	resolver := NewTagResolver()
-	acts := make([][]Activity, len(cfg.Logs))
+	var all []Activity
 	for _, dir := range cfg.Sessions {
 		got, err := ReadActivities(dir, since, resolver)
 		if err != nil {
 			return err
 		}
-		for _, a := range got {
-			if i := logOf(cfg.Logs, a.Cwd); i >= 0 {
-				acts[i] = append(acts[i], a)
-			}
+		all = append(all, got...)
+	}
+	shell, err := ReadShellActivities(cfg.Activity, today, since, resolver)
+	if err != nil {
+		return err
+	}
+	all = append(all, shell...)
+	acts := make([][]Activity, len(cfg.Logs))
+	for _, a := range all {
+		if i := logOf(cfg.Logs, a.Cwd); i >= 0 {
+			acts[i] = append(acts[i], a)
 		}
 	}
 	owner := taskOwners(cfg.Logs, acts)

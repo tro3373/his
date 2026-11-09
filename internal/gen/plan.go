@@ -11,7 +11,8 @@ import (
 	"time"
 )
 
-// Activity is one message in a Claude Code session.
+// Activity is one moment someone was working: a message in a Claude Code session
+// or an entry of the Activity log.
 type Activity struct {
 	At     time.Time
 	Cwd    string
