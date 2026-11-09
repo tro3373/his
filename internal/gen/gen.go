@@ -84,6 +84,9 @@ func (c Config) Validate() error {
 	if c.Activity.Dir == "" {
 		errs = append(errs, errors.New("gen.activity.dir is empty"))
 	}
+	if slices.Contains(c.Activity.Ignore, "") {
+		errs = append(errs, errors.New(`gen.activity.ignore has an empty entry: a bare ~ is YAML null, write "~"`))
+	}
 	if c.Activity.RetentionDays < c.CatchUpDays {
 		errs = append(errs, fmt.Errorf("gen.activity.retention_days (%d) is shorter than gen.catch_up_days (%d)", c.Activity.RetentionDays, c.CatchUpDays))
 	}

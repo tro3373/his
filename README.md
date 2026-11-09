@@ -43,7 +43,7 @@ gen:
   activity:
     dir: ~/.local/state/his/activity  # one YYYYMMDD.tsv per day
     retention_days: 35                # at least gen.catch_up_days; older files are deleted by `his gen`
-    ignore: [~]                       # working directories left out of the log, matched exactly
+    ignore: ["~"]                     # working directories left out of the log, matched exactly
 ```
 
 `ignore` matches a working directory exactly, so `~` leaves out the home directory itself and not what is under it.

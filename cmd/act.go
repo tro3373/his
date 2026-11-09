@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -40,7 +41,17 @@ func runAct(now time.Time) error {
 	if err != nil {
 		return fmt.Errorf("failed to get the working directory: %w", err)
 	}
-	return activity.Append(cfg.Dir, activity.Entry{At: now, Cwd: cwd, Branch: gitBranch(cwd)})
+	return activity.Append(cfg.Dir, activity.Entry{At: now, Cwd: physicalPath(cwd), Branch: gitBranch(cwd)})
+}
+
+// physicalPath resolves symlinks in dir, or returns dir unchanged when it cannot.
+// Claude Code records physical paths: a logical one would split a repository into two tags.
+func physicalPath(dir string) string {
+	resolved, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return dir
+	}
+	return resolved
 }
 
 // gitBranch is the branch checked out in dir, or "" when dir is no repository or HEAD is detached.

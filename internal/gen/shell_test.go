@@ -38,7 +38,7 @@ func TestRun_shellActivity(t *testing.T) {
 			wantLog: true,
 		},
 		{
-			name:    "保持日数より古い日のファイルがある場合_消すこと",
+			name:    "保持日数の境界の場合_それより古い日だけ消すこと",
 			cwd:     func(root string) string { return filepath.Join(root, "notes") },
 			expired: true,
 			wantLog: true,
@@ -55,8 +55,10 @@ func TestRun_shellActivity(t *testing.T) {
 				}
 			}
 			if tt.expired {
-				if err := activity.Append(actDir, activity.Entry{At: time.Date(2026, 9, 1, 10, 0, 0, 0, jst), Cwd: cwd}); err != nil {
-					t.Fatal(err)
+				for _, day := range []int{27, 28} {
+					if err := activity.Append(actDir, activity.Entry{At: time.Date(2026, 9, day, 10, 0, 0, 0, jst), Cwd: cwd}); err != nil {
+						t.Fatal(err)
+					}
 				}
 			}
 			cfg := Config{
@@ -86,8 +88,14 @@ func TestRun_shellActivity(t *testing.T) {
 			if has := strings.Contains(got.String(), heading); has != tt.wantLog {
 				t.Errorf("log has %q = %v, want %v:\n%s", heading, has, tt.wantLog, got.String())
 			}
-			if _, err := os.Stat(filepath.Join(actDir, "20260901.tsv")); !os.IsNotExist(err) {
+			if !tt.expired {
+				return
+			}
+			if _, err := os.Stat(filepath.Join(actDir, "20260927.tsv")); !os.IsNotExist(err) {
 				t.Errorf("保持日数より古い日のファイルが残っている: %v", err)
+			}
+			if _, err := os.Stat(filepath.Join(actDir, "20260928.tsv")); err != nil {
+				t.Errorf("保持日数ちょうどの日のファイルは残すこと: %v", err)
 			}
 		})
 	}
@@ -111,6 +119,7 @@ func TestConfigValidate_activity(t *testing.T) {
 		{name: "保持日数がcatch_up_daysより短い場合_エラーになること", mutate: func(c *Config) { c.Activity.RetentionDays = 29 }, wantErr: "gen.activity.retention_days"},
 		{name: "保持日数がcatch_up_daysと同じ場合_エラーにならないこと", mutate: func(c *Config) { c.Activity.RetentionDays = 30 }},
 		{name: "dirが空の場合_エラーになること", mutate: func(c *Config) { c.Activity.Dir = "" }, wantErr: "gen.activity.dir"},
+		{name: "ignoreに空の要素がある場合_エラーになること", mutate: func(c *Config) { c.Activity.Ignore = []string{""} }, wantErr: "gen.activity.ignore"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

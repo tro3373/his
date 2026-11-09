@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -87,6 +88,43 @@ func TestLoadGenConfig(t *testing.T) {
 			want := gen.Config{Lag: tt.wantLag, CatchUpDays: tt.wantDays, MinIdle: tt.wantIdle}
 			if got.Lag != want.Lag || got.CatchUpDays != want.CatchUpDays || got.MinIdle != want.MinIdle {
 				t.Errorf("loadGenConfig() = %+v, want %+v", got, want)
+			}
+		})
+	}
+}
+
+func TestLoadActivityConfig_yaml(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name    string
+		yaml    string
+		wantDir string
+		want    []string
+	}{
+		{
+			name:    "READMEの例の場合_ホームを除外しdirを展開すること",
+			yaml:    "gen:\n  activity:\n    dir: ~/act\n    ignore: [\"~\"]\n",
+			wantDir: filepath.Join(home, "act"),
+			want:    []string{home},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			viper.Reset()
+			t.Cleanup(viper.Reset)
+			viper.SetConfigType("yaml")
+			if err := viper.ReadConfig(strings.NewReader(tt.yaml)); err != nil {
+				t.Fatal(err)
+			}
+			got, err := loadActivityConfig()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Dir != tt.wantDir || !slices.Equal(got.Ignore, tt.want) {
+				t.Errorf("loadActivityConfig() = %+v, want dir %q ignore %v", got, tt.wantDir, tt.want)
 			}
 		})
 	}

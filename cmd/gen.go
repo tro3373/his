@@ -52,7 +52,7 @@ Config (~/.his):
     activity:                         # optional; what "his act" appends to (see "his hook")
       dir: ~/.local/state/his/activity
       retention_days: 35              # at least catch_up_days; older day files are deleted
-      ignore: [~]                     # working directories left out, matched exactly
+      ignore: ["~"]                   # working directories left out, matched exactly
 
 A project is the JOB_TAG exported by the nearest .envrc above the session's
 working directory ("export JOB_TAG=ACME"), else the repository name.`,
@@ -110,6 +110,8 @@ func dropIgnoreDefault(a *gen.ActivityConfig) {
 }
 
 // expandActivity expands "~" in the directory and every ignored directory.
+// Ignored directories are resolved like the working directories "his act" records,
+// or a symlinked home would never match.
 func expandActivity(a *gen.ActivityConfig) error {
 	dir, err := expandTilde(a.Dir)
 	if err != nil {
@@ -117,9 +119,11 @@ func expandActivity(a *gen.ActivityConfig) error {
 	}
 	a.Dir = dir
 	for i := range a.Ignore {
-		if a.Ignore[i], err = expandTilde(a.Ignore[i]); err != nil {
+		ignored, err := expandTilde(a.Ignore[i])
+		if err != nil {
 			return err
 		}
+		a.Ignore[i] = physicalPath(ignored)
 	}
 	return nil
 }
@@ -132,7 +136,8 @@ func loadActivityConfig() (gen.ActivityConfig, error) {
 	if err := viper.UnmarshalKey("gen.activity", &cfg, configDecodeHook()); err != nil {
 		return cfg, fmt.Errorf("failed to read the gen.activity config: %w", err)
 	}
-	return cfg, expandActivity(&cfg)
+	err := expandActivity(&cfg)
+	return cfg, err
 }
 
 func loadGenConfig() (gen.Config, error) {

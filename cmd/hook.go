@@ -35,10 +35,11 @@ func init() {
 
 // zshHook is the zsh code that runs "<exe> act" in the background from precmd, preexec and chpwd.
 // Sourcing it again registers nothing twice.
+// The subshell keeps the background job from overwriting $! in the user's shell.
 func zshHook(exe string) string {
 	quoted := "'" + strings.ReplaceAll(exe, "'", `'\''`) + "'"
 	var b strings.Builder
-	fmt.Fprintf(&b, "_his_act() { %s act >/dev/null 2>&1 &! }\n", quoted)
+	fmt.Fprintf(&b, "_his_act() { ( %s act >/dev/null 2>&1 &! ) }\n", quoted)
 	for _, hook := range []string{"precmd", "preexec", "chpwd"} {
 		fmt.Fprintf(&b, "(( ${%[1]s_functions[(I)_his_act]} )) || %[1]s_functions+=(_his_act)\n", hook)
 	}
