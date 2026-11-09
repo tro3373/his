@@ -265,23 +265,42 @@ func minutesTitle(minutes []byte) string {
 
 // Task is a task directory under the store, made by the tasks command or task2.
 type Task struct {
-	Path   string // relative to the store root: tasks/<repo>/<dir>/<one of taskFiles>
-	Title  string // the directory name
-	Repo   string
-	Branch string
-	Done   bool
-	// NotStarted is a task filed but not begun: nothing done on its branch is its work yet.
-	NotStarted bool
-	Created    time.Time
-	Started    time.Time // zero when the file has none: index.md, or a task2 task never started
-	Ended      time.Time // zero while the task is open, and always for index.md
+	Path    string // relative to the store root: tasks/<repo>/<dir>/<one of taskFiles>
+	Title   string // the directory name
+	Repo    string
+	Branch  string
+	Status  taskStatus
+	Created time.Time
+	Started time.Time // zero when the file has none: index.md, or a task2 task never started
+	Ended   time.Time // zero while the task is open, and always for index.md
+}
+
+// taskStatus is where a task stands, whichever file it came from.
+type taskStatus int
+
+const (
+	taskOpen taskStatus = iota
+	taskNotStarted
+	taskDone
+)
+
+// parseTaskStatus reads the status of either task file:
+// a check mark in index.md, a word in task.md. Anything else is open.
+func parseTaskStatus(v string) taskStatus {
+	switch {
+	case strings.Contains(v, "✅") || v == "done":
+		return taskDone
+	case v == "todo" || v == "ready":
+		return taskNotStarted
+	}
+	return taskOpen
 }
 
 // workedIn reports whether a was work on this task: on its branch, while it was open.
 // The window matters for a branch that outlives a task, such as main:
 // without it every later and earlier day on that branch would list the task.
 func (t Task) workedIn(a Activity) bool {
-	if t.Branch == "" || t.NotStarted || a.Repo != t.Repo || a.Branch != t.Branch || a.At.Before(t.opened()) {
+	if t.Branch == "" || a.Repo != t.Repo || a.Branch != t.Branch || a.At.Before(t.opened()) {
 		return false
 	}
 	return t.Ended.IsZero() || !a.At.After(t.Ended)
@@ -348,8 +367,7 @@ func parseTask(rel string, content []byte, loc *time.Location) (Task, bool) {
 		case "branch":
 			t.Branch = v
 		case "status":
-			t.Done = isDoneStatus(v)
-			t.NotStarted = isNotStartedStatus(v)
+			t.Status = parseTaskStatus(v)
 		case "started":
 			t.Started = parseFrontMatterTime(v, loc)
 		case "ended":
@@ -358,14 +376,6 @@ func parseTask(rel string, content []byte, loc *time.Location) (Task, bool) {
 	}
 	return t, true
 }
-
-// isDoneStatus reads the status of either task file: a check mark in index.md, "done" in task.md.
-func isDoneStatus(status string) bool {
-	return strings.Contains(status, "✅") || status == "done"
-}
-
-// isNotStartedStatus reads the status of task.md; index.md has no such status.
-func isNotStartedStatus(status string) bool { return status == "todo" || status == "ready" }
 
 // parseFrontMatterTime is zero for an unparsable value:
 // the task then counts as open, so its link stays rather than vanishing.

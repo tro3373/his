@@ -162,7 +162,7 @@ func TestParseTask(t *testing.T) {
 			content: "---\ntitle: x\nbranch: feature/console\nstatus: ✅️🚀\n---\n\n- [x] a\n",
 			want: Task{
 				Path: "tasks/backend/20261030-144224_console-文言修正/index.md", Title: "20261030-144224_console-文言修正",
-				Repo: "backend", Branch: "feature/console", Done: true,
+				Repo: "backend", Branch: "feature/console", Status: taskDone,
 				Created: time.Date(2026, 10, 30, 14, 42, 24, 0, jst),
 			},
 			ok: true,
@@ -183,7 +183,7 @@ func TestParseTask(t *testing.T) {
 			content: "---\nid: 20261030-144224\nstatus: done\nbranch: feature/x\n---\n",
 			want: Task{
 				Path: "tasks/backend/20261030-144224_x/task.md", Title: "20261030-144224_x",
-				Repo: "backend", Branch: "feature/x", Done: true, Created: time.Date(2026, 10, 30, 14, 42, 24, 0, jst),
+				Repo: "backend", Branch: "feature/x", Status: taskDone, Created: time.Date(2026, 10, 30, 14, 42, 24, 0, jst),
 			},
 			ok: true,
 		},
@@ -203,7 +203,7 @@ func TestParseTask(t *testing.T) {
 			content: "---\nstatus: done\nbranch: main\nended: 2026-10-30T18:00:00+09:00\n---\n",
 			want: Task{
 				Path: "tasks/backend/20261030-144224_x/task.md", Title: "20261030-144224_x",
-				Repo: "backend", Branch: "main", Done: true, Created: time.Date(2026, 10, 30, 14, 42, 24, 0, jst),
+				Repo: "backend", Branch: "main", Status: taskDone, Created: time.Date(2026, 10, 30, 14, 42, 24, 0, jst),
 				Ended: time.Date(2026, 10, 30, 18, 0, 0, 0, jst),
 			},
 			ok: true,
@@ -214,7 +214,7 @@ func TestParseTask(t *testing.T) {
 			content: "---\nstatus: todo\nbranch: feature/x\n---\n",
 			want: Task{
 				Path: "tasks/backend/20261030-144224_x/task.md", Title: "20261030-144224_x",
-				Repo: "backend", Branch: "feature/x", NotStarted: true, Created: time.Date(2026, 10, 30, 14, 42, 24, 0, jst),
+				Repo: "backend", Branch: "feature/x", Status: taskNotStarted, Created: time.Date(2026, 10, 30, 14, 42, 24, 0, jst),
 			},
 			ok: true,
 		},
@@ -224,7 +224,7 @@ func TestParseTask(t *testing.T) {
 			content: "---\nstatus: ready\nbranch: feature/x\nstarted: 2026-10-30T15:00:00+09:00\n---\n",
 			want: Task{
 				Path: "tasks/backend/20261030-144224_x/task.md", Title: "20261030-144224_x",
-				Repo: "backend", Branch: "feature/x", NotStarted: true, Created: time.Date(2026, 10, 30, 14, 42, 24, 0, jst),
+				Repo: "backend", Branch: "feature/x", Status: taskNotStarted, Created: time.Date(2026, 10, 30, 14, 42, 24, 0, jst),
 				Started: time.Date(2026, 10, 30, 15, 0, 0, 0, jst),
 			},
 			ok: true,
@@ -291,7 +291,6 @@ func TestTaskWorkedIn(t *testing.T) {
 		{name: "終了していなければ後の日の Activity も作業と数えること", task: open, act: Activity{At: ended.AddDate(0, 0, 3), Repo: "r", Branch: "main"}, want: true},
 		{name: "別の branch の Activity は作業と数えないこと", task: closed, act: Activity{At: created, Repo: "r", Branch: "x"}},
 		{name: "別の repo の Activity は作業と数えないこと", task: closed, act: Activity{At: created, Repo: "z", Branch: "main"}},
-		{name: "着手前のタスクは作業と数えないこと", task: Task{Repo: "r", Branch: "main", Created: created, NotStarted: true}, act: Activity{At: created, Repo: "r", Branch: "main"}},
 		{name: "started より前の Activity は作業と数えないこと", task: Task{Repo: "r", Branch: "main", Created: created, Started: ended}, act: Activity{At: created, Repo: "r", Branch: "main"}},
 		{name: "started の Activity は作業と数えること", task: Task{Repo: "r", Branch: "main", Created: created, Started: ended}, act: Activity{At: ended, Repo: "r", Branch: "main"}, want: true},
 		{name: "branch の無いタスクは作業と数えないこと", task: Task{Repo: "r", Created: created}, act: Activity{At: created, Repo: "r"}},
@@ -336,8 +335,13 @@ func TestLinksOfTaskWindow(t *testing.T) {
 		},
 		{
 			name: "着手前のタスクは作成日でも載せないこと",
-			task: Task{Repo: "r", Branch: "feature/x", Created: d.Add(10 * time.Hour), NotStarted: true},
+			task: Task{Repo: "r", Branch: "feature/x", Created: d.Add(10 * time.Hour), Status: taskNotStarted},
 			own:  true,
+		},
+		{
+			name: "着手前のタスクは branch の Activity があっても載せないこと",
+			task: Task{Repo: "r", Branch: "main", Created: d, Status: taskNotStarted},
+			acts: []Activity{act(10)},
 		},
 		{
 			name: "着手済みのタスクは作成日に載せること",
