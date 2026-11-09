@@ -82,6 +82,8 @@ make tag arg="--count 10 --tag DEV"
   - `Analyze()`: Entry point that finds files, parses logs, and generates summaries
   - `TimeLog.Fix()`: Calculates duration by setting end time from next entry's start
   - `NewResult()`: Aggregates logs into `TagSummaryLog` and `TagTitleSummaryLog`
+- `internal/activity/` - The Activity log on disk (`<dir>/YYYYMMDD.tsv`, one `epoch\tcwd\tbranch` line per entry).
+  `Append`, `Read` and `Prune` are the only code that reads or writes it
 - `internal/gen/` - Writes the daily headings from Claude Code sessions, rec's calls and tasks
 
 ### Commands
@@ -95,6 +97,9 @@ make tag arg="--count 10 --tag DEV"
 3. **`cmd/tag.go`** - Shows aggregated summaries by tag or tag+title
    - Default: 14 days from last 2 files
    - Flags: `--count` (days), `--tag` (filter by tag)
+
+4. **`cmd/act.go`** - Appends the working directory and branch to the Activity log. Reads only `gen.activity`
+5. **`cmd/hook.go`** - Prints the zsh code that runs `his act` (`eval "$(his hook zsh)"`)
 
 ### Data Flow
 
