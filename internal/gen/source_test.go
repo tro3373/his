@@ -178,6 +178,26 @@ func TestParseTask(t *testing.T) {
 			ok: true,
 		},
 		{
+			name:    "task.md の status が done なら完了として読むこと",
+			rel:     "tasks/backend/20261030-144224_x/task.md",
+			content: "---\nid: 20261030-144224\nstatus: done\nbranch: feature/x\n---\n",
+			want: Task{
+				Path: "tasks/backend/20261030-144224_x/task.md", Title: "20261030-144224_x",
+				Repo: "backend", Branch: "feature/x", Done: true, Created: time.Date(2026, 10, 30, 14, 42, 24, 0, jst),
+			},
+			ok: true,
+		},
+		{
+			name:    "task.md の status が done 以外なら未完了として読むこと",
+			rel:     "tasks/backend/20261030-144224_x/task.md",
+			content: "---\nstatus: doing\nbranch: feature/x\n---\n",
+			want: Task{
+				Path: "tasks/backend/20261030-144224_x/task.md", Title: "20261030-144224_x",
+				Repo: "backend", Branch: "feature/x", Created: time.Date(2026, 10, 30, 14, 42, 24, 0, jst),
+			},
+			ok: true,
+		},
+		{
 			name: "日時で始まらないディレクトリはタスクとして扱わないこと",
 			rel:  "tasks/backend/index.md", content: "- [ ] a\n",
 			ok: false,
@@ -191,6 +211,31 @@ func TestParseTask(t *testing.T) {
 			}
 			if ok && !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("parseTask() = %+v, want %+v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestReadTasks(t *testing.T) {
+	tests := []struct {
+		name string
+		file string
+	}{
+		{name: "index.md のタスクを読むこと", file: "index.md"},
+		{name: "task.md のタスクを読むこと", file: "task.md"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root := t.TempDir()
+			rel := filepath.Join("tasks", "backend", "20261030-144224_x", tt.file)
+			write(t, filepath.Join(root, rel), "---\nbranch: feature/x\n---\n")
+
+			got, err := ReadTasks(root, jst)
+			if err != nil {
+				t.Fatalf("ReadTasks() error = %v", err)
+			}
+			if len(got) != 1 || got[0].Path != rel {
+				t.Errorf("ReadTasks() = %+v, want one task at %s", got, rel)
 			}
 		})
 	}
