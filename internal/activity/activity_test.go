@@ -83,19 +83,23 @@ func TestAppend_perm(t *testing.T) {
 	}
 }
 
-func TestRead_files(t *testing.T) {
+func TestRead(t *testing.T) {
 	tests := []struct {
 		name    string
 		content string
+		noDir   bool
 		want    []Entry
 	}{
 		{name: "不正な行の場合_飛ばして読むこと", content: "garbage\n1\t/a\n\nx\t/a\tb\n" + "1793667600\t/ok\tbr\n\t\t\n1793667600\t\tbr\n", want: []Entry{{At: time.Unix(1793667600, 0).In(jst), Cwd: "/ok", Branch: "br"}}},
 		{name: "列が多すぎる場合_読まないこと", content: "1793667600\t/a\tb\textra\n", want: nil},
+		{name: "dirが無い場合_空を返しエラーにしないこと", noDir: true, want: nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			dir := t.TempDir()
-			writeFile(t, filepath.Join(dir, "20261103.tsv"), tt.content)
+			dir := filepath.Join(t.TempDir(), "activity")
+			if !tt.noDir {
+				writeFile(t, filepath.Join(dir, "20261103.tsv"), tt.content)
+			}
 			got, err := Read(dir, at(3, 0, 0))
 			if err != nil {
 				t.Fatal(err)
@@ -104,13 +108,6 @@ func TestRead_files(t *testing.T) {
 				t.Errorf("Read() = %v, want %v", got, tt.want)
 			}
 		})
-	}
-}
-
-func TestRead_missingDir(t *testing.T) {
-	got, err := Read(filepath.Join(t.TempDir(), "none"), at(3, 0, 0))
-	if err != nil || got != nil {
-		t.Errorf("Read() = %v, %v; want nil, nil", got, err)
 	}
 }
 

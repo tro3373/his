@@ -62,22 +62,7 @@ func init() {
 
 // initConfig reads in config file and ENV variables if set.
 func initConfig() {
-	if cfgFile != "" {
-		// Use config file from the flag.
-		viper.SetConfigFile(cfgFile)
-	} else {
-		// Find home directory.
-		home, err := homedir.Dir()
-		if err != nil {
-			fmt.Println(err)
-			os.Exit(1)
-		}
-
-		// Search config in home directory with name ".his" (without extension).
-		viper.AddConfigPath(home)
-		viper.SetConfigType("yaml")
-		viper.SetConfigName(".his")
-	}
+	setConfigSource()
 
 	viper.AutomaticEnv() // read in environment variables that match
 
@@ -85,6 +70,22 @@ func initConfig() {
 	if err := viper.ReadInConfig(); err == nil {
 		slog.Debug("Using config", "file", viper.ConfigFileUsed())
 	}
+}
+
+// setConfigSource points viper at the --config file, else at ".his" in the home directory.
+func setConfigSource() {
+	if cfgFile != "" {
+		viper.SetConfigFile(cfgFile)
+		return
+	}
+	home, err := homedir.Dir()
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+	viper.AddConfigPath(home)
+	viper.SetConfigType("yaml")
+	viper.SetConfigName(".his")
 }
 
 func getDefaultFindFilePattern() (string, error) {

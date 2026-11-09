@@ -18,6 +18,7 @@ func TestRun_shellActivity(t *testing.T) {
 		name    string
 		cwd     func(root string) string
 		ignore  func(root string) []string
+		expired bool
 		wantLog bool
 	}{
 		{
@@ -36,6 +37,12 @@ func TestRun_shellActivity(t *testing.T) {
 			ignore:  func(root string) []string { return []string{root} },
 			wantLog: true,
 		},
+		{
+			name:    "保持日数より古い日のファイルがある場合_消すこと",
+			cwd:     func(root string) string { return filepath.Join(root, "notes") },
+			expired: true,
+			wantLog: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -44,6 +51,11 @@ func TestRun_shellActivity(t *testing.T) {
 			cwd := tt.cwd(root)
 			for _, at := range []time.Time{date.Add(10*time.Hour + 20*time.Minute), date.Add(11*time.Hour + 10*time.Minute)} {
 				if err := activity.Append(actDir, activity.Entry{At: at, Cwd: cwd}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tt.expired {
+				if err := activity.Append(actDir, activity.Entry{At: time.Date(2026, 9, 1, 10, 0, 0, 0, jst), Cwd: cwd}); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -74,28 +86,10 @@ func TestRun_shellActivity(t *testing.T) {
 			if has := strings.Contains(got.String(), heading); has != tt.wantLog {
 				t.Errorf("log has %q = %v, want %v:\n%s", heading, has, tt.wantLog, got.String())
 			}
+			if _, err := os.Stat(filepath.Join(actDir, "20260901.tsv")); !os.IsNotExist(err) {
+				t.Errorf("保持日数より古い日のファイルが残っている: %v", err)
+			}
 		})
-	}
-}
-
-func TestRun_prunesActivity(t *testing.T) {
-	root := t.TempDir()
-	actDir := filepath.Join(root, "act")
-	old := time.Date(2026, 9, 1, 10, 0, 0, 0, jst)
-	if err := activity.Append(actDir, activity.Entry{At: old, Cwd: "/w"}); err != nil {
-		t.Fatal(err)
-	}
-	cfg := Config{
-		StoreRoot: filepath.Join(root, "store"), Sessions: []string{filepath.Join(root, "none")},
-		Lunch: noon, MinIdle: time.Hour, CatchUpDays: 30,
-		Logs:     []LogConfig{{Name: "work", Dir: filepath.Join(root, "work"), Default: true}},
-		Activity: ActivityConfig{Dir: actDir, RetentionDays: 35},
-	}
-	if err := Run(cfg, time.Date(2026, 11, 2, 9, 0, 0, 0, jst), time.Time{}, io.Discard); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(filepath.Join(actDir, "20260901.tsv")); !os.IsNotExist(err) {
-		t.Errorf("保持日数より古い日のファイルを消すこと: %v", err)
 	}
 }
 
