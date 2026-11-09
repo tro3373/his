@@ -314,7 +314,8 @@ func finishedPaths(tasks []Task) []string {
 	return out
 }
 
-// linksOf lists the tasks of the day from from on: the ones worked on that day (see Task.workedIn), and the ones split that day that belong to this log.
+// linksOf lists the tasks of the day from from on: the ones worked on that day (see Task.workedIn),
+// and the ones split that day that belong to this log, unless not started yet.
 // Each goes under the segment where its branch was most active, else under the
 // segment it was split in, else under the last segment that is not lunch.
 func linksOf(tasks []Task, day Day, dayActs []Activity, from time.Time, ownTask func(Task) bool) []Link {
@@ -322,7 +323,7 @@ func linksOf(tasks []Task, day Day, dayActs []Activity, from time.Time, ownTask 
 	var picked []Task
 	for _, t := range tasks {
 		worked := slices.ContainsFunc(dayActs, t.workedIn)
-		created := within(t.Created, from, next) && ownTask(t)
+		created := within(t.Created, from, next) && ownTask(t) && !t.NotStarted
 		if worked || created {
 			picked = append(picked, t)
 		}

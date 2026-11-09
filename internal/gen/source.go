@@ -263,25 +263,36 @@ func minutesTitle(minutes []byte) string {
 	return strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(title), "議事録:"))
 }
 
-// Task is a task directory split by the tasks command.
+// Task is a task directory under the store, made by the tasks command or task2.
 type Task struct {
-	Path    string // relative to the store root: tasks/<repo>/<dir>/<one of taskFiles>
-	Title   string // the directory name
-	Repo    string
-	Branch  string
-	Done    bool
-	Created time.Time
-	Ended   time.Time // zero while the task is open, and always for index.md
+	Path   string // relative to the store root: tasks/<repo>/<dir>/<one of taskFiles>
+	Title  string // the directory name
+	Repo   string
+	Branch string
+	Done   bool
+	// NotStarted is a task filed but not begun: nothing done on its branch is its work yet.
+	NotStarted bool
+	Created    time.Time
+	Started    time.Time // zero when the file has none: index.md, or a task2 task never started
+	Ended      time.Time // zero while the task is open, and always for index.md
 }
 
 // workedIn reports whether a was work on this task: on its branch, while it was open.
 // The window matters for a branch that outlives a task, such as main:
 // without it every later and earlier day on that branch would list the task.
 func (t Task) workedIn(a Activity) bool {
-	if t.Branch == "" || a.Repo != t.Repo || a.Branch != t.Branch || a.At.Before(t.Created) {
+	if t.Branch == "" || t.NotStarted || a.Repo != t.Repo || a.Branch != t.Branch || a.At.Before(t.opened()) {
 		return false
 	}
 	return t.Ended.IsZero() || !a.At.After(t.Ended)
+}
+
+// opened is when work on the task can begin: when it was started, else when it was split.
+func (t Task) opened() time.Time {
+	if t.Started.IsZero() {
+		return t.Created
+	}
+	return t.Started
 }
 
 const taskDirLayout = "20060102-150405"
@@ -338,11 +349,11 @@ func parseTask(rel string, content []byte, loc *time.Location) (Task, bool) {
 			t.Branch = v
 		case "status":
 			t.Done = isDoneStatus(v)
+			t.NotStarted = isNotStartedStatus(v)
+		case "started":
+			t.Started = parseFrontMatterTime(v, loc)
 		case "ended":
-			// An unparsable value leaves the task open: the link stays rather than vanishing.
-			if ended, err := time.Parse(time.RFC3339, v); err == nil {
-				t.Ended = ended.In(loc)
-			}
+			t.Ended = parseFrontMatterTime(v, loc)
 		}
 	}
 	return t, true
@@ -351,6 +362,19 @@ func parseTask(rel string, content []byte, loc *time.Location) (Task, bool) {
 // isDoneStatus reads the status of either task file: a check mark in index.md, "done" in task.md.
 func isDoneStatus(status string) bool {
 	return strings.Contains(status, "✅") || status == "done"
+}
+
+// isNotStartedStatus reads the status of task.md; index.md has no such status.
+func isNotStartedStatus(status string) bool { return status == "todo" || status == "ready" }
+
+// parseFrontMatterTime is zero for an unparsable value:
+// the task then counts as open, so its link stays rather than vanishing.
+func parseFrontMatterTime(v string, loc *time.Location) time.Time {
+	at, err := time.Parse(time.RFC3339, v)
+	if err != nil {
+		return time.Time{}
+	}
+	return at.In(loc)
 }
 
 func frontMatter(content string) string {
