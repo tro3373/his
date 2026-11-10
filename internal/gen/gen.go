@@ -307,24 +307,25 @@ func dominantTag(acts []Activity) string {
 func finishedPaths(tasks []Task) []string {
 	var out []string
 	for _, t := range tasks {
-		if t.Done {
+		if t.Status == taskDone {
 			out = append(out, t.Path)
 		}
 	}
 	return out
 }
 
-// linksOf lists the tasks of the day from from on: the ones whose branch had session activity that
-// day, and the ones split that day that belong to this log.
+// linksOf lists the tasks of the day from from on: the ones worked on that day (see Task.workedIn),
+// and the ones split that day that belong to this log. A task not started yet is never listed.
 // Each goes under the segment where its branch was most active, else under the
 // segment it was split in, else under the last segment that is not lunch.
 func linksOf(tasks []Task, day Day, dayActs []Activity, from time.Time, ownTask func(Task) bool) []Link {
 	next := midnight(from).AddDate(0, 0, 1)
 	var picked []Task
 	for _, t := range tasks {
-		worked := t.Branch != "" && slices.ContainsFunc(dayActs, func(a Activity) bool {
-			return a.Repo == t.Repo && a.Branch == t.Branch
-		})
+		if t.Status == taskNotStarted {
+			continue
+		}
+		worked := slices.ContainsFunc(dayActs, t.workedIn)
 		created := within(t.Created, from, next) && ownTask(t)
 		if worked || created {
 			picked = append(picked, t)
@@ -333,7 +334,7 @@ func linksOf(tasks []Task, day Day, dayActs []Activity, from time.Time, ownTask 
 	slices.SortFunc(picked, func(a, b Task) int { return cmp.Or(a.Created.Compare(b.Created), cmp.Compare(a.Path, b.Path)) })
 	links := make([]Link, 0, len(picked))
 	for _, t := range picked {
-		links = append(links, Link{Path: t.Path, Title: t.Title, Done: t.Done, Segment: segmentOf(t, day, dayActs)})
+		links = append(links, Link{Path: t.Path, Title: t.Title, Done: t.Status == taskDone, Segment: segmentOf(t, day, dayActs)})
 	}
 	return links
 }
@@ -341,7 +342,7 @@ func linksOf(tasks []Task, day Day, dayActs []Activity, from time.Time, ownTask 
 func segmentOf(t Task, day Day, dayActs []Activity) int {
 	count := make([]int, len(day.Segments))
 	for _, a := range dayActs {
-		if a.Repo != t.Repo || a.Branch != t.Branch {
+		if !t.workedIn(a) {
 			continue
 		}
 		if i := segmentIndex(day, a.At); i >= 0 {

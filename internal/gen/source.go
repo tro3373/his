@@ -263,23 +263,72 @@ func minutesTitle(minutes []byte) string {
 	return strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(title), "議事録:"))
 }
 
-// Task is a task directory split by the tasks command.
+// Task is a task directory under the store, made by the tasks command or task2.
 type Task struct {
-	Path    string // relative to the store root: tasks/<repo>/<dir>/index.md
+	Path    string // relative to the store root: tasks/<repo>/<dir>/<one of taskFiles>
 	Title   string // the directory name
 	Repo    string
 	Branch  string
-	Done    bool
+	Status  taskStatus
 	Created time.Time
+	Started time.Time // zero when the file has none: index.md, or a task2 task never started
+	Ended   time.Time // zero while the task is open, and always for index.md
+}
+
+// taskStatus is where a task stands, whichever file it came from.
+type taskStatus int
+
+const (
+	taskOpen taskStatus = iota
+	taskNotStarted
+	taskDone
+)
+
+// parseTaskStatus reads the status of either task file:
+// a check mark in index.md, a word in task.md. Anything else is open.
+func parseTaskStatus(v string) taskStatus {
+	switch {
+	case strings.Contains(v, "✅") || v == "done":
+		return taskDone
+	case v == "todo" || v == "ready":
+		return taskNotStarted
+	}
+	return taskOpen
+}
+
+// workedIn reports whether a was work on this task: on its branch, while it was open.
+// The window matters for a branch that outlives a task, such as main:
+// without it every later and earlier day on that branch would list the task.
+func (t Task) workedIn(a Activity) bool {
+	if t.Branch == "" || a.Repo != t.Repo || a.Branch != t.Branch || a.At.Before(t.opened()) {
+		return false
+	}
+	return t.Ended.IsZero() || !a.At.After(t.Ended)
+}
+
+// opened is when work on the task can begin: when it was started, else when it was split.
+func (t Task) opened() time.Time {
+	if t.Started.IsZero() {
+		return t.Created
+	}
+	return t.Started
 }
 
 const taskDirLayout = "20060102-150405"
 
+// taskFiles are the names a task's file goes by: index.md from the tasks command,
+// task.md from task2.
+var taskFiles = []string{"index.md", "task.md"}
+
 // ReadTasks reads every task under storeRoot/tasks.
 func ReadTasks(storeRoot string, loc *time.Location) ([]Task, error) {
-	paths, err := filepath.Glob(filepath.Join(storeRoot, "tasks", "*", "*", "index.md"))
-	if err != nil {
-		return nil, err
+	var paths []string
+	for _, name := range taskFiles {
+		found, err := filepath.Glob(filepath.Join(storeRoot, "tasks", "*", "*", name))
+		if err != nil {
+			return nil, err
+		}
+		paths = append(paths, found...)
 	}
 	var tasks []Task
 	for _, p := range paths {
@@ -318,10 +367,24 @@ func parseTask(rel string, content []byte, loc *time.Location) (Task, bool) {
 		case "branch":
 			t.Branch = v
 		case "status":
-			t.Done = strings.Contains(v, "✅")
+			t.Status = parseTaskStatus(v)
+		case "started":
+			t.Started = parseFrontMatterTime(v, loc)
+		case "ended":
+			t.Ended = parseFrontMatterTime(v, loc)
 		}
 	}
 	return t, true
+}
+
+// parseFrontMatterTime is zero for an unparsable value:
+// the task then counts as open, so its link stays rather than vanishing.
+func parseFrontMatterTime(v string, loc *time.Location) time.Time {
+	at, err := time.Parse(time.RFC3339, v)
+	if err != nil {
+		return time.Time{}
+	}
+	return at.In(loc)
 }
 
 func frontMatter(content string) string {
