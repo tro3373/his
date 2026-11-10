@@ -20,7 +20,7 @@ func TestZshHook(t *testing.T) {
 			name: "通常のパスの場合_引用して関数を定義し3つのフックに登録すること",
 			exe:  "/usr/bin/his",
 			want: []string{
-				"_his_act() { ( '/usr/bin/his' act >/dev/null 2>&1 &! ) }",
+				"_his_act() { setopt local_options no_monitor; ( '/usr/bin/his' act >/dev/null 2>&1 &! ) }",
 				"precmd_functions+=(_his_act)", "preexec_functions+=(_his_act)", "chpwd_functions+=(_his_act)",
 			},
 		},
