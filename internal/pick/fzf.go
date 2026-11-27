@@ -15,9 +15,9 @@ const (
 	previewCommand = "tail -n 200 {1}"
 )
 
-// Fzf lets the user choose candidates in fzf and returns the chosen paths.
+// fzf lets the user choose candidates in fzf and returns the chosen paths.
 // Choosing nothing, or leaving with Esc, returns no paths and no error.
-func Fzf(cands []Candidate) ([]string, error) {
+func fzf(cands []Candidate) ([]string, error) {
 	var in strings.Builder
 	for _, c := range cands {
 		fmt.Fprintf(&in, "%s\t%s\t%s\n", c.Path, c.Log, c.Rel)

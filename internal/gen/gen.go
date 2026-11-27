@@ -70,9 +70,7 @@ func (c Config) Validate() error {
 	if c.Lunch.End <= c.Lunch.Start {
 		errs = append(errs, errors.New("gen.lunch needs a start before its end"))
 	}
-	if len(c.Logs) == 0 {
-		errs = append(errs, errors.New("gen.logs is empty"))
-	}
+	errs = append(errs, ValidateLogs(c.Logs))
 	if c.Lag < 0 {
 		errs = append(errs, errors.New("gen.lag is negative"))
 	}
@@ -91,8 +89,17 @@ func (c Config) Validate() error {
 	if c.Activity.RetentionDays < c.CatchUpDays {
 		errs = append(errs, fmt.Errorf("gen.activity.retention_days (%d) is shorter than gen.catch_up_days (%d)", c.Activity.RetentionDays, c.CatchUpDays))
 	}
+	return errors.Join(errs...)
+}
+
+// ValidateLogs reports the gen.logs errors that would make a run read or write the wrong place.
+func ValidateLogs(logs []LogConfig) error {
+	var errs []error
+	if len(logs) == 0 {
+		errs = append(errs, errors.New("gen.logs is empty"))
+	}
 	defaults := 0
-	for _, l := range c.Logs {
+	for _, l := range logs {
 		if l.Dir == "" {
 			errs = append(errs, fmt.Errorf("gen.logs %q has no dir", l.Name))
 		}
@@ -411,7 +418,7 @@ func monthFile(dir string, date time.Time) (string, string, error) {
 		return found, string(data), err
 	}
 	path := monthlog.PathFor(dir, date)
-	prev, err := previousLog(dir, filepath.Base(path))
+	prev, err := monthlog.Before(dir, date)
 	if err != nil {
 		return "", "", err
 	}
@@ -423,18 +430,4 @@ func monthFile(dir string, date time.Time) (string, string, error) {
 		return "", "", err
 	}
 	return path, NewMonthContent(string(data)), nil
-}
-
-func previousLog(dir, name string) (string, error) {
-	all, err := monthlog.List(dir)
-	if err != nil {
-		return "", err
-	}
-	prev := ""
-	for _, p := range all {
-		if filepath.Base(p) < name {
-			prev = p
-		}
-	}
-	return prev, nil
 }

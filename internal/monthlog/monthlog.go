@@ -25,29 +25,49 @@ func PathFor(dir string, date time.Time) string {
 // Find is the month log of month's month, whatever day of that month names it.
 // When several exist, the one with the lowest name wins.
 func Find(dir string, month time.Time) (string, bool, error) {
-	pattern := filepath.Join(dir, month.Format(yearLayout), month.Format(monthLayout)+"-??"+nameSuffix)
-	found, err := filepath.Glob(pattern)
-	if err != nil {
+	found, err := glob(filepath.Join(dir, month.Format(yearLayout), month.Format(monthLayout)+"-??"+nameSuffix))
+	if err != nil || len(found) == 0 {
 		return "", false, err
 	}
-	found = slices.DeleteFunc(found, func(p string) bool { return !isMonthLog(p) })
-	if len(found) == 0 {
-		return "", false, nil
-	}
-	sortByName(found)
 	return found[0], true, nil
 }
 
-// List is every month log under dir, sorted by file name ascending, oldest month first.
+// Before is the newest month log under dir named before date's day, or "" when there is none.
+func Before(dir string, date time.Time) (string, error) {
+	all, err := List(dir)
+	if err != nil {
+		return "", err
+	}
+	limit := PathFor(dir, date)
+	prev := ""
+	for _, p := range all {
+		if Compare(p, limit) < 0 {
+			prev = p
+		}
+	}
+	return prev, nil
+}
+
+// List is every month log under dir, oldest month first.
 // A dir that does not exist holds none.
 func List(dir string) ([]string, error) {
-	all, err := filepath.Glob(filepath.Join(dir, "*", "*"+nameSuffix))
+	return glob(filepath.Join(dir, "*", "*"+nameSuffix))
+}
+
+// Compare orders month logs by the month they hold, oldest first, whichever dir they lie under.
+// Month logs of the same file name compare equal.
+func Compare(a, b string) int {
+	return cmp.Compare(filepath.Base(a), filepath.Base(b))
+}
+
+func glob(pattern string) ([]string, error) {
+	found, err := filepath.Glob(pattern)
 	if err != nil {
 		return nil, err
 	}
-	all = slices.DeleteFunc(all, func(p string) bool { return !isMonthLog(p) })
-	sortByName(all)
-	return all, nil
+	found = slices.DeleteFunc(found, func(p string) bool { return !isMonthLog(p) })
+	slices.SortStableFunc(found, Compare)
+	return found, nil
 }
 
 func isMonthLog(path string) bool {
@@ -57,10 +77,4 @@ func isMonthLog(path string) bool {
 	}
 	_, err := time.Parse(dayLayout, date)
 	return err == nil
-}
-
-func sortByName(paths []string) {
-	slices.SortFunc(paths, func(a, b string) int {
-		return cmp.Or(cmp.Compare(filepath.Base(a), filepath.Base(b)), cmp.Compare(a, b))
-	})
 }

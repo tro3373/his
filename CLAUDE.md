@@ -87,9 +87,9 @@ make tag arg="--count 10 --tag DEV"
 - `internal/config/` - Reads `~/.his` through the global viper instance that `cmd/root.go` sets up:
   `Gen`, `Logs` (only `gen.logs`), `Activity` (only `gen.activity`, never validated) and `Pattern`. Expands `~`
 - `internal/monthlog/` - The month log layout on disk (`<dir>/<YYYY>/<YYYY-MM-DD>-log.md`).
-  `Find`, `PathFor` and `List` are the only code that knows it
+  `PathFor`, `Find`, `Before`, `List` and `Compare` are the only code that knows it
 - `internal/pick/` - Lists the month logs of every log, newest month first, lets the user choose in fzf and opens them in `$EDITOR`.
-  `Fzf` and `Edit` run the external commands; `Run` lists the paths instead when stdout is no terminal
+  `Run` runs fzf and `$EDITOR`, or lists the paths instead when stdout is no terminal
 - `internal/gen/` - Writes the daily headings from Claude Code sessions, rec's calls and tasks
 
 ### Commands
@@ -130,8 +130,8 @@ Markdown files (~/pattern/*.md)
 gen.logs (~/.his)
   ↓ config.Logs() - name and dir of each log
   ↓ pick.Candidates() - monthlog.List per log, newest month first
-  ↓ pick.Fzf() - choose paths (stdout not a terminal: print them and stop)
-  ↓ pick.Edit() - sh -c "$EDITOR" paths
+  ↓ pick.Run() - choose paths in fzf (stdout not a terminal: print them and stop)
+  ↓ sh -c "$EDITOR" paths
 ```
 
 ### Configuration

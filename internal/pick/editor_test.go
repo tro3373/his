@@ -34,7 +34,7 @@ func TestEdit(t *testing.T) {
 			t.Setenv("RECORD", record)
 			t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 
-			if err := Edit(strings.ReplaceAll(tt.editor, "{bin}", script), tt.paths); err != nil {
+			if err := edit(strings.ReplaceAll(tt.editor, "{bin}", script), tt.paths); err != nil {
 				t.Fatal(err)
 			}
 			data, err := os.ReadFile(record)
@@ -58,7 +58,7 @@ func TestEdit(t *testing.T) {
 func TestEdit_failure(t *testing.T) {
 	bin := t.TempDir()
 	script := writeScript(t, bin, "editor", "exit 3\n")
-	if err := Edit(script, []string{"/a"}); err == nil || !strings.Contains(err.Error(), "failed to run the editor") {
-		t.Errorf("Edit() error = %v, want failed to run the editor", err)
+	if err := edit(script, []string{"/a"}); err == nil || !strings.Contains(err.Error(), "failed to run the editor") {
+		t.Errorf("edit() error = %v, want failed to run the editor", err)
 	}
 }

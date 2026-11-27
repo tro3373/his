@@ -2,7 +2,6 @@
 package pick
 
 import (
-	"cmp"
 	"errors"
 	"fmt"
 	"io"
@@ -39,7 +38,7 @@ func Candidates(logs []gen.LogConfig) ([]Candidate, error) {
 		}
 	}
 	slices.SortStableFunc(all, func(a, b Candidate) int {
-		return cmp.Compare(filepath.Base(b.Path), filepath.Base(a.Path))
+		return monthlog.Compare(b.Path, a.Path)
 	})
 	return all, nil
 }
@@ -57,11 +56,11 @@ func Run(logs []gen.LogConfig, interactive bool, list io.Writer) error {
 	if len(cands) == 0 {
 		return errors.New("no month log found under the gen.logs dirs")
 	}
-	chosen, err := Fzf(cands)
+	chosen, err := fzf(cands)
 	if err != nil || len(chosen) == 0 {
 		return err
 	}
-	return Edit(os.Getenv("EDITOR"), chosen)
+	return edit(os.Getenv("EDITOR"), chosen)
 }
 
 func writePaths(w io.Writer, cands []Candidate) error {

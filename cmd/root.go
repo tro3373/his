@@ -24,7 +24,7 @@ The newest month comes first; the preview shows the end of the file.
 When stdout is not a terminal, print the path of every month log instead.
 To see the time summary, run "his latest" or "his tag".`,
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := runPick(os.Stdout); err != nil {
+		if err := runPick(); err != nil {
 			log.Fatalf("==> Failed to pick a month log. Err:%+v\n", err)
 		}
 	},
@@ -73,12 +73,12 @@ func setConfigSource() {
 	viper.SetConfigName(".his")
 }
 
-func runPick(out *os.File) error {
+func runPick() error {
 	logs, err := config.Logs()
 	if err != nil {
 		return err
 	}
-	return pick.Run(logs, isTerminal(out), out)
+	return pick.Run(logs, isTerminal(os.Stdout), os.Stdout)
 }
 
 func isTerminal(f *os.File) bool {

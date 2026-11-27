@@ -64,31 +64,38 @@ func Gen() (gen.Config, error) {
 	if err := expandActivity(&cfg.Activity); err != nil {
 		return cfg, err
 	}
-	expand := func(p *string) error {
-		v, err := ExpandTilde(*p)
-		*p = v
-		return err
-	}
-	if err := errors.Join(expand(&cfg.StoreRoot), expand(&cfg.RecDir)); err != nil {
+	if err := errors.Join(expandPath(&cfg.StoreRoot), expandPath(&cfg.RecDir), expandPaths(cfg.Sessions)); err != nil {
 		return cfg, err
 	}
-	for i := range cfg.Sessions {
-		if err := expand(&cfg.Sessions[i]); err != nil {
-			return cfg, err
-		}
-	}
-	for i := range cfg.Logs {
-		if err := expand(&cfg.Logs[i].Dir); err != nil {
-			return cfg, err
-		}
-		for j := range cfg.Logs[i].Roots {
-			if err := expand(&cfg.Logs[i].Roots[j]); err != nil {
-				return cfg, err
-			}
-		}
+	if err := expandLogs(cfg.Logs); err != nil {
+		return cfg, err
 	}
 	if err := cfg.Validate(); err != nil {
 		return cfg, fmt.Errorf("invalid gen config (see `his gen --help`): %w", err)
 	}
 	return cfg, nil
+}
+
+func expandLogs(logs []gen.LogConfig) error {
+	for i := range logs {
+		if err := errors.Join(expandPath(&logs[i].Dir), expandPaths(logs[i].Roots)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func expandPaths(paths []string) error {
+	for i := range paths {
+		if err := expandPath(&paths[i]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func expandPath(p *string) error {
+	v, err := ExpandTilde(*p)
+	*p = v
+	return err
 }

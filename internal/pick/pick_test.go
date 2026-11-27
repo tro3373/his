@@ -140,10 +140,10 @@ exit "$FAKE_CODE"
 			t.Setenv("FAKE_OUT", tt.out)
 			t.Setenv("FAKE_CODE", tt.code)
 
-			got, err := Fzf(cands)
+			got, err := fzf(cands)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-					t.Fatalf("Fzf() error = %v, want containing %q", err, tt.wantErr)
+					t.Fatalf("fzf() error = %v, want containing %q", err, tt.wantErr)
 				}
 				return
 			}
@@ -151,7 +151,7 @@ exit "$FAKE_CODE"
 				t.Fatal(err)
 			}
 			if !slices.Equal(got, tt.want) {
-				t.Errorf("Fzf() = %v, want %v", got, tt.want)
+				t.Errorf("fzf() = %v, want %v", got, tt.want)
 			}
 			stdin, _ := os.ReadFile(filepath.Join(work, "stdin"))
 			wantIn := "/n/job/2026/2026-11-02-log.md\tjob\t2026/2026-11-02-log.md\n/n/prv/2026/2026-10-05-log.md\tprv\t2026/2026-10-05-log.md\n"
@@ -170,7 +170,7 @@ exit "$FAKE_CODE"
 
 func TestFzf_notInstalled(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
-	if _, err := Fzf([]Candidate{{Path: "/a"}}); err == nil || !strings.Contains(err.Error(), "failed to run fzf") {
-		t.Errorf("Fzf() error = %v, want failed to run fzf", err)
+	if _, err := fzf([]Candidate{{Path: "/a"}}); err == nil || !strings.Contains(err.Error(), "failed to run fzf") {
+		t.Errorf("fzf() error = %v, want failed to run fzf", err)
 	}
 }

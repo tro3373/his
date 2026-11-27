@@ -8,9 +8,9 @@ import (
 
 const defaultEditor = "nvim"
 
-// Edit opens paths in editor with the terminal attached.
+// edit opens paths in editor with the terminal attached.
 // editor is a shell command that may carry arguments ("nvim -p"); empty means nvim.
-func Edit(editor string, paths []string) error {
+func edit(editor string, paths []string) error {
 	if len(paths) == 0 {
 		return nil
 	}
