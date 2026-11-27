@@ -361,8 +361,6 @@ func ReadTasks(storeRoot string, loc *time.Location) ([]Task, error) {
 	return tasks, nil
 }
 
-// resolvedRel is path relative to realRoot with symlinks resolved, or rel when
-// the resolved path leaves the store: a link must stay relative to the store root.
 func resolvedRel(realRoot, path, rel string) (string, error) {
 	real, err := filepath.EvalSymlinks(path)
 	if err != nil {

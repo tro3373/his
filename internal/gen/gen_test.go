@@ -130,20 +130,20 @@ func TestRun_target(t *testing.T) {
 	lateMorning := time.Date(2026, 11, 2, 11, 50, 0, 0, jst)
 	dayStamps := []string{"2026-10-31T01:20:00Z", "2026-11-02T00:10:00Z", "2026-11-02T01:10:00Z", "2026-11-02T02:20:00Z"}
 	tests := []struct {
-		name     string
-		target   time.Time
-		logs     map[string]string // file name under the log dir's year => content
-		now      time.Time         // zero means the run at the top of this test
-		stamps   []string          // session messages; empty means one on each of the last 3 days
-		branches []string          // the git branch of each stamp; empty means none
-		tasks    map[string]string // task directory under notes/tasks/notes => front matter body
-		alias    bool              // notes/tasks/alias is a symlink to notes/tasks/notes, and the session also worked in a repository named alias
-		temp     bool              // the session's working directory is under the temporary directory
-		lag      time.Duration
-		days     int           // zero means 30
-		idle     time.Duration // zero means an hour
-		want     []string
-		notWant  []string
+		name           string
+		target         time.Time
+		logs           map[string]string // file name under the log dir's year => content
+		now            time.Time         // zero means the run at the top of this test
+		stamps         []string          // session messages; empty means one on each of the last 3 days
+		branches       []string          // the git branch of each stamp; empty means none
+		tasks          map[string]string // task directory under notes/tasks/notes => front matter body
+		symlinkedTasks bool
+		cwdInTempDir   bool
+		lag            time.Duration
+		days           int           // zero means 30
+		idle           time.Duration // zero means an hour
+		want           []string
+		notWant        []string
 	}{
 		{name: "指定も書いた日も無ければ_30日の窓を今日まで書くこと", want: []string{older, yesterday, today}},
 		{
@@ -218,23 +218,23 @@ func TestRun_target(t *testing.T) {
 			want:    []string{"### 20261102_120000\n"},
 			notWant: []string{"### 20261102_113000", "### 20261102_114500"},
 		},
-		{name: "一時ディレクトリの下の作業は書かないこと", now: lateMorning, stamps: dayStamps, temp: true, notWant: []string{"## 2026-11-02"}},
+		{name: "一時ディレクトリの下の作業は書かないこと", now: lateMorning, stamps: dayStamps, cwdInTempDir: true, notWant: []string{"## 2026-11-02"}},
 		{
-			name:     "symlinkで同じタスクを指すディレクトリがあっても_リンクは1つにすること",
-			target:   time.Date(2026, 11, 1, 0, 0, 0, 0, jst),
-			stamps:   []string{"2026-11-01T00:30:00Z", "2026-11-01T01:20:00Z"},
-			branches: []string{"feature/new", "feature/new"},
-			tasks:    map[string]string{"20261030-090000_new": "branch: feature/new\nstatus:\n"},
-			alias:    true,
-			want:     []string{"[20261030-090000_new](tasks/notes/20261030-090000_new/index.md)\n### "},
-			notWant:  []string{"tasks/alias/"},
+			name:           "symlinkで同じタスクを指すディレクトリがあっても_リンクは1つにすること",
+			target:         time.Date(2026, 11, 1, 0, 0, 0, 0, jst),
+			stamps:         []string{"2026-11-01T00:30:00Z", "2026-11-01T01:20:00Z"},
+			branches:       []string{"feature/new", "feature/new"},
+			tasks:          map[string]string{"20261030-090000_new": "branch: feature/new\nstatus:\n"},
+			symlinkedTasks: true,
+			want:           []string{"[20261030-090000_new](tasks/notes/20261030-090000_new/index.md)\n### "},
+			notWant:        []string{"tasks/alias/"},
 		},
 		{
-			name:   "symlink越しのパスで書いたリンクも_完了したら印を更新すること",
-			target: time.Date(2026, 11, 1, 0, 0, 0, 0, jst),
-			stamps: []string{"2026-11-01T02:30:00Z"},
-			tasks:  map[string]string{"20261030-090000_done": "status: ✅️\n"},
-			alias:  true,
+			name:           "symlink越しのパスで書いたリンクも_完了したら印を更新すること",
+			target:         time.Date(2026, 11, 1, 0, 0, 0, 0, jst),
+			stamps:         []string{"2026-11-01T02:30:00Z"},
+			tasks:          map[string]string{"20261030-090000_done": "status: ✅️\n"},
+			symlinkedTasks: true,
 			logs: map[string]string{"2026-11-01-log.md": lines("# Log", "", "## 2026-11-01 (日)", "### 20261101_090000 KEPT 1h",
 				"- [ ] [20261030-090000_done](tasks/alias/20261030-090000_done/index.md)", "### 20261101_100000")},
 			want: []string{"- [x] [20261030-090000_done](tasks/alias/20261030-090000_done/index.md)"},
@@ -262,7 +262,7 @@ func TestRun_target(t *testing.T) {
 			for name, front := range tt.tasks {
 				write(t, filepath.Join(root, "notes/tasks/notes", name, "index.md"), "---\n"+front+"---\n")
 			}
-			if tt.alias {
+			if tt.symlinkedTasks {
 				session.WriteString(`{"type":"user","timestamp":"2026-11-01T01:40:00Z","cwd":"` + filepath.Join(root, "alias") + `","gitBranch":"feature/new"}` + "\n")
 				if err := os.Symlink("notes", filepath.Join(root, "notes/tasks/alias")); err != nil {
 					t.Fatal(err)
@@ -281,7 +281,7 @@ func TestRun_target(t *testing.T) {
 				CatchUpDays: cmp.Or(tt.days, 30),
 				Logs:        []LogConfig{{Name: "work", Dir: filepath.Join(root, "notes/work"), Default: true}},
 			}
-			if tt.temp {
+			if tt.cwdInTempDir {
 				cfg.TempDir = root
 			}
 			if err := Run(cfg, cmp.Or(tt.now, now), tt.target, io.Discard); err != nil {

@@ -134,10 +134,6 @@ func PlanDay(date time.Time, rules DayRules, acts []Activity, meets []Meeting) (
 	// Without this check a rerun would plan the hour after lunch that this run left out.
 	resumes := slices.ContainsFunc(acts, func(a Activity) bool { return within(a.At, p.lunch1, limit) }) ||
 		slices.ContainsFunc(meets, func(m Meeting) bool { return within(m.Start, p.lunch1, limit) })
-	// A run during lunch cannot tell yet whether the day resumes. Work that went on
-	// into the last idle-free stretch before lunch stops at lunch, as a day that resumes
-	// cuts it there: ending at the last hour instead would leave the rest of that stretch
-	// to a heading of its own on the next run.
 	workedUpToLunch := within(limit, p.lunch0, p.lunch1) &&
 		slices.ContainsFunc(acts, func(a Activity) bool { return within(a.At, p.lunch0.Add(-p.minIdle), p.lunch0) })
 	endsInLunch := end.After(p.lunch0) && !end.After(p.lunch1)

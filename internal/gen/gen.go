@@ -27,8 +27,7 @@ type Config struct {
 	CatchUpDays int           `mapstructure:"catch_up_days"` // how far back a run without a date looks
 	MinIdle     time.Duration `mapstructure:"min_idle"`      // how long a stretch without activity must last to be a break
 
-	// TempDir holds throwaway working directories (review and test runs):
-	// activity under it belongs to no log. It is not read from the config file.
+	// TempDir is the directory whose activity belongs to no log.
 	TempDir string `mapstructure:"-"`
 }
 
@@ -200,10 +199,6 @@ func Run(cfg Config, now, target time.Time, w io.Writer) error {
 	return nil
 }
 
-// runLimit is where a run at now ends the day: lag before now,
-// but no earlier than the start of lunch when now is during lunch.
-// Nobody works during lunch, so the morning up to it is already over;
-// stopping lag before a run at the start of lunch would leave its last stretch to a heading of its own.
 func runLimit(now time.Time, lag time.Duration, lunch Lunch) time.Time {
 	limit := now.Add(-lag)
 	day0 := midnight(now)
@@ -266,7 +261,6 @@ func logOf(logs []LogConfig, cwd string) int {
 	return defaultLog(logs)
 }
 
-// inDir reports whether path is dir or under it. An empty dir holds nothing.
 func inDir(path, dir string) bool {
 	if dir == "" {
 		return false
@@ -338,8 +332,7 @@ func dominantTag(acts []Activity) string {
 	return best
 }
 
-// finishedPaths is where the finished tasks are, as the logs link them:
-// links written before a task's directory became a symlink name it by Via.
+// finishedPaths is where the finished tasks are, as the logs link them.
 func finishedPaths(tasks []Task) []string {
 	var out []string
 	for _, t := range tasks {
