@@ -84,6 +84,8 @@ make tag arg="--count 10 --tag DEV"
   - `NewResult()`: Aggregates logs into `TagSummaryLog` and `TagTitleSummaryLog`
 - `internal/activity/` - The Activity log on disk (`<dir>/YYYYMMDD.tsv`, one `epoch\tcwd\tbranch` line per entry).
   `Append`, `Read` and `Prune` are the only code that reads or writes it
+- `internal/monthlog/` - The month log layout on disk (`<dir>/<YYYY>/<YYYY-MM-DD>-log.md`).
+  `Find`, `PathFor` and `List` are the only code that knows it
 - `internal/gen/` - Writes the daily headings from Claude Code sessions, rec's calls and tasks
 
 ### Commands

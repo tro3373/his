@@ -5,12 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/tro3373/his/internal/monthlog"
 )
 
 // Config is the "gen" section of the his config file.
@@ -49,7 +50,7 @@ func DefaultConfig() Config {
 // one config dir may hold sessions of several logs.
 type LogConfig struct {
 	Name  string   `mapstructure:"name"`
-	Dir   string   `mapstructure:"dir"`   // <Dir>/<YYYY>/<YYYY-MM-DD>-log.md
+	Dir   string   `mapstructure:"dir"`   // holds the month logs, laid out by monthlog
 	Roots []string `mapstructure:"roots"` // working directories under these belong to this log
 	Apps  []string `mapstructure:"apps"`  // rec apps whose calls belong to this log
 	// Default takes the sessions under no log's roots, and the tasks whose
@@ -400,21 +401,18 @@ func writeDay(path, content string, date time.Time, block []string, links []Link
 }
 
 // monthFile returns the log of the date's month and its content.
-// The month's log is the one named <YYYY-MM>-*-log.md, whatever its day: the
-// first business day names it. When there is none, it is named after date and
-// starts with the previous log's head.
+// The month's log is the one the first business day named, whatever its day.
+// When there is none, it is named after date and starts with the previous log's head.
 func monthFile(dir string, date time.Time) (string, string, error) {
-	year := filepath.Join(dir, date.Format("2006"))
-	found, err := filepath.Glob(filepath.Join(year, date.Format("2006-01")+"-??-log.md"))
+	found, ok, err := monthlog.Find(dir, date)
 	if err != nil {
 		return "", "", err
 	}
-	if len(found) > 0 {
-		slices.Sort(found)
-		data, err := os.ReadFile(found[0])
-		return found[0], string(data), err
+	if ok {
+		data, err := os.ReadFile(found)
+		return found, string(data), err
 	}
-	path := filepath.Join(year, date.Format("2006-01-02")+"-log.md")
+	path := monthlog.PathFor(dir, date)
 	prev, err := previousLog(dir, filepath.Base(path))
 	if err != nil {
 		return "", "", err
@@ -430,14 +428,13 @@ func monthFile(dir string, date time.Time) (string, string, error) {
 }
 
 func previousLog(dir, name string) (string, error) {
-	all, err := filepath.Glob(filepath.Join(dir, "*", "*-log.md"))
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+	all, err := monthlog.List(dir)
+	if err != nil {
 		return "", err
 	}
 	prev := ""
 	for _, p := range all {
-		b := filepath.Base(p)
-		if b < name && b > filepath.Base(prev) {
+		if filepath.Base(p) < name {
 			prev = p
 		}
 	}
