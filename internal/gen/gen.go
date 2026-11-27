@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tro3373/his/internal/activity"
 	"github.com/tro3373/his/internal/monthlog"
 )
 
@@ -43,7 +44,7 @@ type ActivityConfig struct {
 // CatchUpDays matches Claude Code deleting session logs after 30 days (cleanupPeriodDays).
 func DefaultConfig() Config {
 	return Config{
-		Lag: 30 * time.Minute, CatchUpDays: 30, MinIdle: time.Hour, TempDir: os.TempDir(),
+		Lag: 30 * time.Minute, CatchUpDays: 30, MinIdle: time.Hour, TempDir: activity.PhysicalPath(os.TempDir()),
 		Activity: ActivityConfig{Dir: "~/.local/state/his/activity", RetentionDays: 35, Ignore: []string{"~"}},
 	}
 }
