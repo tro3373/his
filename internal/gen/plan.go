@@ -94,6 +94,7 @@ type DayRules struct {
 // The day starts and ends at the first and last activity, truncated to the hour.
 // A day with activity at or past rules.Limit ends at the limit instead,
 // and no day ends after it.
+// With rules.Limit during lunch, work up to rules.MinIdle before lunch ends at lunch.
 // Lunch, meetings and idle stretches cut the day; every other stretch is shared
 // among projects by how many 10 minute bins each had activity in.
 // An idle stretch is rules.MinIdle or more, lunch aside, without activity or meeting:
