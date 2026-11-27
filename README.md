@@ -7,6 +7,24 @@
 
 # DONE
 
+# Open the month logs
+
+`his` with no arguments lists the month logs of every log under `gen.logs` in fzf, newest month first, and opens the chosen ones (Tab for several) in `$EDITOR` (default `nvim`).
+The preview shows the end of the file.
+When stdout is not a terminal, it prints the path of every month log, one per line.
+The time summary moved to `his latest` (alias `his show`) and `his tag`.
+
+```yaml
+gen:
+  logs:
+    - name: job
+      dir: ~/notes/job      # <dir>/<YYYY>/<YYYY-MM-DD>-log.md
+    - name: prv
+      dir: ~/notes/prv
+```
+
+`his` reads only `gen.logs`. `his gen --help` lists the rest of `gen`.
+
 # Activity log
 
 Work done only in a shell or nvim leaves no Claude Code session, so `his gen` would read it as a break.

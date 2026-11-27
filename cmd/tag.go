@@ -8,16 +8,11 @@ import (
 	"github.com/tro3373/his/internal/summary"
 )
 
-// tagCmd represents the tag command
 var tagCmd = &cobra.Command{
-	Use:   "tag",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+	Use:   "tag [TAG] [COUNT]",
+	Short: "Show the latest days of the time log summed by tag and title",
+	Long: `Show the most recent days (default 14) of the time logs found by the pattern in the config, summed by tag and title.
+A number is the count of days, anything else filters by tag.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := tag(args); err != nil {
 			log.Fatalf("==> Failed to execute subcommand tag. Err:%+v\n", err)
@@ -27,16 +22,6 @@ to quickly create a Cobra application.`,
 
 func init() {
 	rootCmd.AddCommand(tagCmd)
-
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// tagCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// tagCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }
 
 func tag(args []string) error {
