@@ -21,7 +21,7 @@ day that already has a time heading, through today.
 It starts catch_up_days back when no day has one.
 A day ends no later than lag before now. A run during lunch ends the
 morning at the start of lunch when it was worked up to min_idle before it.
-Work in the temporary directory ($TMPDIR, else /tmp) is not counted.
+Work under /tmp and the temporary directory ($TMPDIR) is not counted.
 Days before the start are not touched.
 A day is only added to: what follows its latest time heading is appended,
 at most one append an hour, and earlier lines stay except that the

@@ -28,8 +28,8 @@ type Config struct {
 	CatchUpDays int           `mapstructure:"catch_up_days"` // how far back a run without a date looks
 	MinIdle     time.Duration `mapstructure:"min_idle"`      // how long a stretch without activity must last to be a break
 
-	// TempDir is the directory whose activity belongs to no log.
-	TempDir string `mapstructure:"-"`
+	// TempDirs are the directories whose activity belongs to no log.
+	TempDirs []string `mapstructure:"-"`
 }
 
 // ActivityConfig is the "gen.activity" section: where shells and nvim append
@@ -44,7 +44,7 @@ type ActivityConfig struct {
 // CatchUpDays matches Claude Code deleting session logs after 30 days (cleanupPeriodDays).
 func DefaultConfig() Config {
 	return Config{
-		Lag: 30 * time.Minute, CatchUpDays: 30, MinIdle: time.Hour, TempDir: activity.PhysicalPath(os.TempDir()),
+		Lag: 30 * time.Minute, CatchUpDays: 30, MinIdle: time.Hour, TempDirs: tempDirs(),
 		Activity: ActivityConfig{Dir: "~/.local/state/his/activity", RetentionDays: 35, Ignore: []string{"~"}},
 	}
 }
@@ -94,6 +94,13 @@ func (c Config) Validate() error {
 		errs = append(errs, fmt.Errorf("gen.activity.retention_days (%d) is shorter than gen.catch_up_days (%d)", c.Activity.RetentionDays, c.CatchUpDays))
 	}
 	return errors.Join(errs...)
+}
+
+// tempDirs is /tmp and the temporary directory of this process, symlinks resolved:
+// a shell such as nix-shell points $TMPDIR below /tmp, and throwaway runs
+// under /tmp must still be left out when gen runs there.
+func tempDirs() []string {
+	return []string{activity.PhysicalPath("/tmp"), activity.PhysicalPath(os.TempDir())}
 }
 
 // ValidateLogs reports the gen.logs errors that would make a run read or write the wrong place.
@@ -158,7 +165,7 @@ func Run(cfg Config, now, target time.Time, w io.Writer) error {
 	all = append(all, shell...)
 	acts := make([][]Activity, len(cfg.Logs))
 	for _, a := range all {
-		if inDir(a.Cwd, cfg.TempDir) {
+		if slices.ContainsFunc(cfg.TempDirs, func(dir string) bool { return inDir(a.Cwd, dir) }) {
 			continue
 		}
 		if i := logOf(cfg.Logs, a.Cwd); i >= 0 {

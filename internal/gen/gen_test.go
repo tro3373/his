@@ -6,9 +6,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/tro3373/his/internal/activity"
 )
 
 // TestRun drives two logs end to end: sessions, recordings and tasks in, the
@@ -114,6 +117,14 @@ func TestRun(t *testing.T) {
 	}
 }
 
+func TestDefaultConfig_tempDirs(t *testing.T) {
+	t.Setenv("TMPDIR", "/tmp/nix-shell.test")
+	got := DefaultConfig().TempDirs
+	if want := []string{activity.PhysicalPath("/tmp"), "/tmp/nix-shell.test"}; !slices.Equal(got, want) {
+		t.Errorf("TempDirs = %v, want %v", got, want)
+	}
+}
+
 func TestRun_target(t *testing.T) {
 	now := time.Date(2026, 11, 2, 15, 0, 0, 0, jst)
 	yesterday := "### 20261101_100000 notes 1h"
@@ -144,6 +155,7 @@ func TestRun_target(t *testing.T) {
 		idle           time.Duration // zero means an hour
 		want           []string
 		notWant        []string
+		once           []string // each appears exactly once
 	}{
 		{name: "指定も書いた日も無ければ_30日の窓を今日まで書くこと", want: []string{older, yesterday, today}},
 		{
@@ -228,6 +240,7 @@ func TestRun_target(t *testing.T) {
 			symlinkedTasks: true,
 			want:           []string{"[20261030-090000_new](tasks/notes/20261030-090000_new/index.md)\n### "},
 			notWant:        []string{"tasks/alias/"},
+			once:           []string{"20261030-090000_new/index.md"},
 		},
 		{
 			name:           "symlink越しのパスで書いたリンクも_完了したら印を更新すること",
@@ -294,7 +307,7 @@ func TestRun_target(t *testing.T) {
 				Logs:        []LogConfig{{Name: "work", Dir: filepath.Join(root, "notes/work"), Default: true}},
 			}
 			if tt.cwdInTempDir {
-				cfg.TempDir = root
+				cfg.TempDirs = []string{root}
 			}
 			if err := Run(cfg, cmp.Or(tt.now, now), tt.target, io.Discard); err != nil {
 				t.Fatal(err)
@@ -319,6 +332,11 @@ func TestRun_target(t *testing.T) {
 			for _, w := range tt.want {
 				if !strings.Contains(got, w) {
 					t.Errorf("%q is missing in\n%s", w, got)
+				}
+			}
+			for _, w := range tt.once {
+				if n := strings.Count(got, w); n != 1 {
+					t.Errorf("%q appears %d times in\n%s", w, n, got)
 				}
 			}
 			for _, w := range tt.notWant {
