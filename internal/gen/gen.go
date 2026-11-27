@@ -158,6 +158,9 @@ func Run(cfg Config, now, target time.Time, w io.Writer) error {
 	all = append(all, shell...)
 	acts := make([][]Activity, len(cfg.Logs))
 	for _, a := range all {
+		if inDir(a.Cwd, cfg.TempDir) {
+			continue
+		}
 		if i := logOf(cfg.Logs, a.Cwd); i >= 0 {
 			acts[i] = append(acts[i], a)
 		}
@@ -256,13 +259,19 @@ func dayWritten(dir string, date time.Time) (bool, error) {
 // logOf is the log whose roots hold cwd, else the default log, else -1.
 func logOf(logs []LogConfig, cwd string) int {
 	for i, l := range logs {
-		for _, root := range l.Roots {
-			if cwd == root || strings.HasPrefix(cwd, strings.TrimSuffix(root, "/")+"/") {
-				return i
-			}
+		if slices.ContainsFunc(l.Roots, func(root string) bool { return inDir(cwd, root) }) {
+			return i
 		}
 	}
 	return defaultLog(logs)
+}
+
+// inDir reports whether path is dir or under it. An empty dir holds nothing.
+func inDir(path, dir string) bool {
+	if dir == "" {
+		return false
+	}
+	return path == dir || strings.HasPrefix(path, strings.TrimSuffix(dir, "/")+"/")
 }
 
 // defaultLog is the index of the default log, or -1.
