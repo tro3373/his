@@ -189,7 +189,7 @@ func Run(cfg Config, now, target time.Time, w io.Writer) error {
 			var links []Link
 			if day, ok := PlanDay(d, dayRules, dayActs, meets); ok {
 				from := maxTime(d, dayRules.From)
-				links = linksOf(tasks, day, between(dayActs, from, d.AddDate(0, 0, 1)), from, func(t Task) bool { return owner(t.Repo) == i })
+				links = linksOf(tasks, day, between(dayActs, from, d.AddDate(0, 0, 1)), from, func(t Task) bool { return owner(t.Repos) == i })
 				block = RenderDay(day, links)
 			}
 			if err := writeDay(path, content, d, block, links, done, w); err != nil {
@@ -289,13 +289,13 @@ func between(acts []Activity, from, to time.Time) []Activity {
 	return out
 }
 
-// taskOwners decides which log a repository's tasks go to: the first log whose
-// sessions worked in it, else the default log. -1 means no log.
-func taskOwners(logs []LogConfig, acts [][]Activity) func(repo string) int {
+// taskOwners decides which log the tasks of a repository, known by any of repos, go to:
+// the first log whose sessions worked in one of them, else the default log. -1 means no log.
+func taskOwners(logs []LogConfig, acts [][]Activity) func(repos []string) int {
 	fallback := defaultLog(logs)
-	return func(repo string) int {
+	return func(repos []string) int {
 		for i := range logs {
-			if slices.ContainsFunc(acts[i], func(a Activity) bool { return a.Repo == repo }) {
+			if slices.ContainsFunc(acts[i], func(a Activity) bool { return slices.Contains(repos, a.Repo) }) {
 				return i
 			}
 		}
@@ -338,7 +338,8 @@ func finishedPaths(tasks []Task) []string {
 	var out []string
 	for _, t := range tasks {
 		if t.Status == taskDone {
-			out = append(out, t.Path, t.Via)
+			out = append(out, t.Path)
+			out = append(out, t.Vias...)
 		}
 	}
 	return out
@@ -362,10 +363,9 @@ func linksOf(tasks []Task, day Day, dayActs []Activity, from time.Time, ownTask 
 		}
 	}
 	slices.SortFunc(picked, func(a, b Task) int { return cmp.Or(a.Created.Compare(b.Created), cmp.Compare(a.Path, b.Path)) })
-	picked = slices.CompactFunc(picked, func(a, b Task) bool { return a.Path == b.Path })
 	links := make([]Link, 0, len(picked))
 	for _, t := range picked {
-		links = append(links, Link{Path: t.Path, Title: t.Title, Done: t.Status == taskDone, Segment: segmentOf(t, day, dayActs)})
+		links = append(links, Link{Path: t.Path, Vias: t.Vias, Title: t.Title, Done: t.Status == taskDone, Segment: segmentOf(t, day, dayActs)})
 	}
 	return links
 }

@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 )
@@ -265,10 +266,10 @@ func minutesTitle(minutes []byte) string {
 
 // Task is a task directory under the store, made by the tasks command or task2.
 type Task struct {
-	Path    string // relative to the store root with symlinks resolved: tasks/<repo>/<dir>/<one of taskFiles>
-	Via     string // Path as found, through a symlinked directory: one task found twice has two
-	Title   string // the directory name
-	Repo    string
+	Path    string   // relative to the store root with symlinks resolved: tasks/<repo>/<dir>/<one of taskFiles>
+	Vias    []string // every path it was found at, Path included when found there; a symlinked directory adds one
+	Title   string   // the directory name
+	Repos   []string // the repository directory of each of Vias
 	Branch  string
 	Status  taskStatus
 	Created time.Time
@@ -301,7 +302,7 @@ func parseTaskStatus(v string) taskStatus {
 // The window matters for a branch that outlives a task, such as main:
 // without it every later and earlier day on that branch would list the task.
 func (t Task) workedIn(a Activity) bool {
-	if t.Branch == "" || a.Repo != t.Repo || a.Branch != t.Branch || a.At.Before(t.opened()) {
+	if t.Branch == "" || !slices.Contains(t.Repos, a.Repo) || a.Branch != t.Branch || a.At.Before(t.opened()) {
 		return false
 	}
 	return t.Ended.IsZero() || !a.At.After(t.Ended)
@@ -339,6 +340,7 @@ func ReadTasks(storeRoot string, loc *time.Location) ([]Task, error) {
 		return nil, err
 	}
 	var tasks []Task
+	seen := map[string]int{}
 	for _, p := range paths {
 		rel, err := filepath.Rel(storeRoot, p)
 		if err != nil {
@@ -352,10 +354,16 @@ func ReadTasks(storeRoot string, loc *time.Location) ([]Task, error) {
 		if !ok {
 			continue
 		}
-		t.Via = rel
 		if t.Path, err = resolvedRel(realRoot, p, rel); err != nil {
 			return nil, err
 		}
+		t.Vias = []string{rel}
+		if i, ok := seen[t.Path]; ok {
+			tasks[i].Vias = append(tasks[i].Vias, rel)
+			tasks[i].Repos = append(tasks[i].Repos, t.Repos...)
+			continue
+		}
+		seen[t.Path] = len(tasks)
 		tasks = append(tasks, t)
 	}
 	return tasks, nil
@@ -385,7 +393,7 @@ func parseTask(rel string, content []byte, loc *time.Location) (Task, bool) {
 	if err != nil {
 		return Task{}, false
 	}
-	t := Task{Path: rel, Title: dir, Repo: filepath.Base(filepath.Dir(filepath.Dir(rel))), Created: created}
+	t := Task{Path: rel, Title: dir, Repos: []string{filepath.Base(filepath.Dir(filepath.Dir(rel)))}, Created: created}
 	for l := range strings.SplitSeq(frontMatter(string(content)), "\n") {
 		k, v, _ := strings.Cut(l, ":")
 		v = strings.TrimSpace(v)
