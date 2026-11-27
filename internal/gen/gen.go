@@ -338,12 +338,13 @@ func dominantTag(acts []Activity) string {
 	return best
 }
 
-// finishedPaths is where the finished tasks are, as the logs link them.
+// finishedPaths is where the finished tasks are, as the logs link them:
+// links written before a task's directory became a symlink name it by Via.
 func finishedPaths(tasks []Task) []string {
 	var out []string
 	for _, t := range tasks {
 		if t.Status == taskDone {
-			out = append(out, t.Path)
+			out = append(out, t.Path, t.Via)
 		}
 	}
 	return out
@@ -367,6 +368,7 @@ func linksOf(tasks []Task, day Day, dayActs []Activity, from time.Time, ownTask 
 		}
 	}
 	slices.SortFunc(picked, func(a, b Task) int { return cmp.Or(a.Created.Compare(b.Created), cmp.Compare(a.Path, b.Path)) })
+	picked = slices.CompactFunc(picked, func(a, b Task) bool { return a.Path == b.Path })
 	links := make([]Link, 0, len(picked))
 	for _, t := range picked {
 		links = append(links, Link{Path: t.Path, Title: t.Title, Done: t.Status == taskDone, Segment: segmentOf(t, day, dayActs)})

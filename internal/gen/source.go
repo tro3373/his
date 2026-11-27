@@ -265,7 +265,8 @@ func minutesTitle(minutes []byte) string {
 
 // Task is a task directory under the store, made by the tasks command or task2.
 type Task struct {
-	Path    string // relative to the store root: tasks/<repo>/<dir>/<one of taskFiles>
+	Path    string // relative to the store root with symlinks resolved: tasks/<repo>/<dir>/<one of taskFiles>
+	Via     string // Path as found, through a symlinked directory: one task found twice has two
 	Title   string // the directory name
 	Repo    string
 	Branch  string
@@ -330,6 +331,13 @@ func ReadTasks(storeRoot string, loc *time.Location) ([]Task, error) {
 		}
 		paths = append(paths, found...)
 	}
+	if len(paths) == 0 {
+		return nil, nil
+	}
+	realRoot, err := filepath.EvalSymlinks(storeRoot)
+	if err != nil {
+		return nil, err
+	}
 	var tasks []Task
 	for _, p := range paths {
 		rel, err := filepath.Rel(storeRoot, p)
@@ -340,11 +348,31 @@ func ReadTasks(storeRoot string, loc *time.Location) ([]Task, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to read task %s: %w", p, err)
 		}
-		if t, ok := parseTask(rel, data, loc); ok {
-			tasks = append(tasks, t)
+		t, ok := parseTask(rel, data, loc)
+		if !ok {
+			continue
 		}
+		t.Via = rel
+		if t.Path, err = resolvedRel(realRoot, p, rel); err != nil {
+			return nil, err
+		}
+		tasks = append(tasks, t)
 	}
 	return tasks, nil
+}
+
+// resolvedRel is path relative to realRoot with symlinks resolved, or rel when
+// the resolved path leaves the store: a link must stay relative to the store root.
+func resolvedRel(realRoot, path, rel string) (string, error) {
+	real, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return "", err
+	}
+	got, err := filepath.Rel(realRoot, real)
+	if err != nil || !filepath.IsLocal(got) {
+		return rel, nil
+	}
+	return got, nil
 }
 
 // parseTask reads a task's front matter. Only directories named
