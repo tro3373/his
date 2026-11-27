@@ -157,3 +157,32 @@ func TestPrune_missingDir(t *testing.T) {
 		t.Errorf("Prune() = %v, want nil", err)
 	}
 }
+
+func TestPhysicalPath(t *testing.T) {
+	real, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+	absent := filepath.Join(real, "absent")
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{name: "symlinkの場合_実体のパスになること", in: link, want: real},
+		{name: "実体の場合_そのままであること", in: real, want: real},
+		{name: "存在しない場合_そのままであること", in: absent, want: absent},
+		{name: "空の場合_空のままであること", in: "", want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := PhysicalPath(tt.in); got != tt.want {
+				t.Errorf("PhysicalPath(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}

@@ -74,7 +74,7 @@ make tag arg="--count 10 --tag DEV"
 
 ### Packages
 
-- `cmd/` - Cobra commands (`root`, `latest`, `tag`, `gen`): args, config, output
+- `cmd/` - Cobra commands (`root`, `latest`, `tag`, `gen`, `act`, `hook`): args, wiring, output
 - `internal/timelog/` - The time heading format (`### 20261030_130000 ALPHA 1h Title`).
   `Parse` and `Heading.String` are the only code that reads or writes it;
   `gen` writes through it and `summary` reads through it
@@ -84,24 +84,33 @@ make tag arg="--count 10 --tag DEV"
   - `NewResult()`: Aggregates logs into `TagSummaryLog` and `TagTitleSummaryLog`
 - `internal/activity/` - The Activity log on disk (`<dir>/YYYYMMDD.tsv`, one `epoch\tcwd\tbranch` line per entry).
   `Append`, `Read` and `Prune` are the only code that reads or writes it
+- `internal/config/` - Reads `~/.his` through the global viper instance that `cmd/root.go` sets up:
+  `Gen`, `Logs` (only `gen.logs`), `Activity` (only `gen.activity`, never validated) and `Pattern`. Expands `~`
+- `internal/monthlog/` - The month log layout on disk (`<dir>/<YYYY>/<YYYY-MM-DD>-log.md`).
+  `PathFor`, `Find`, `Before`, `List` and `Compare` are the only code that knows it
+- `internal/pick/` - Lists the month logs of every log, newest month first, lets the user choose in fzf and opens them in `$EDITOR`.
+  `Run` runs fzf and `$EDITOR`, or lists the paths instead when stdout is no terminal
 - `internal/gen/` - Writes the daily headings from Claude Code sessions, rec's calls and tasks
 
 ### Commands
 
-1. **`cmd/root.go`** - Cobra CLI root command (defaults to running `latest`)
+1. **`cmd/root.go`** - Cobra CLI root command. `his` with no args picks month logs in fzf and opens them in `$EDITOR`
+   (default `nvim`, may carry args). Without a terminal on stdout it prints each month log's path. Reads `gen.logs` only
 
-2. **`cmd/latest.go`** - Shows most recent N time log entries
+2. **`cmd/latest.go`** - Alias `show`. Shows most recent N time log entries
    - Default: 1 entry from last 2 files
-   - Flags: `--count` (number of dates to show)
+   - Args: `[TAG] [COUNT]`; a number is the count of dates to show, anything else the tag
 
 3. **`cmd/tag.go`** - Shows aggregated summaries by tag or tag+title
    - Default: 14 days from last 2 files
-   - Flags: `--count` (days), `--tag` (filter by tag)
+   - Args: `[TAG] [COUNT]`, as `latest`
 
 4. **`cmd/act.go`** - Appends the working directory and branch to the Activity log. Reads only `gen.activity`
 5. **`cmd/hook.go`** - Prints the zsh code that runs `his act` (`eval "$(his hook zsh)"`)
 
 ### Data Flow
+
+`his latest` and `his tag`:
 
 ```
 Markdown files (~/pattern/*.md)
@@ -115,10 +124,21 @@ Markdown files (~/pattern/*.md)
   ↓ PrintTagResult() / PrintTagTitleResult()
 ```
 
+`his`:
+
+```
+gen.logs (~/.his)
+  ↓ config.Logs() - name and dir of each log
+  ↓ pick.Candidates() - monthlog.List per log, newest month first
+  ↓ pick.Run() - choose paths in fzf (stdout not a terminal: print them and stop)
+  ↓ sh -c "$EDITOR" paths
+```
+
 ### Configuration
 
 - **Config file**: `~/.his` (YAML format)
-- **Pattern key**: `pattern: "~/*.md"` specifies log file search glob
+- **Pattern key**: `pattern: "~/*.md"` specifies the time log file glob read by `latest` and `tag`
+- **gen.logs**: `name` and `dir` of each log; `his` picks the month logs under each `dir`
 
 Example `~/.his`:
 ```yaml

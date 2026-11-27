@@ -2,12 +2,13 @@ package cmd
 
 import (
 	"fmt"
+	"log"
 	"log/slog"
 	"os"
-	"path/filepath"
-	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/tro3373/his/internal/config"
+	"github.com/tro3373/his/internal/pick"
 
 	homedir "github.com/mitchellh/go-homedir"
 	"github.com/spf13/viper"
@@ -15,21 +16,16 @@ import (
 
 var cfgFile string
 
-// rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "his",
-	Short: "A brief description of your application",
-	Long: `A longer description that spans multiple lines and likely contains
-examples and usage of using your application. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
-	// Uncomment the following line if your bare application
-	// has an action associated with it:
+	Short: "Pick month logs in fzf and open them in $EDITOR",
+	Long: `Pick month logs of the logs under gen.logs in fzf (several with tab) and open them in $EDITOR (default nvim).
+The newest month comes first; the preview shows the end of the file.
+When stdout is not a terminal, print the path of every month log instead.
+To see the time summary, run "his latest" or "his tag".`,
 	Run: func(cmd *cobra.Command, args []string) {
-		if len(args) == 0 {
-			latestCmd.Run(cmd, args)
+		if err := runPick(); err != nil {
+			log.Fatalf("==> Failed to pick a month log. Err:%+v\n", err)
 		}
 	},
 }
@@ -46,18 +42,7 @@ func Execute() {
 func init() {
 	cobra.OnInitialize(initConfig)
 
-	// Here you will define your flags and configuration settings.
-	// Cobra supports persistent flags, which, if defined here,
-	// will be global for your application.
-
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.his)")
-
-	// Cobra also supports local flags, which will only run
-	// when this action is called directly.
-	// rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
-
-	rootCmd.Flags().StringP("tag", "t", "", "tag filter")
-	rootCmd.Flags().BoolP("detail", "d", false, "ditail(tag+titile) summary mode (default off)")
 }
 
 // initConfig reads in config file and ENV variables if set.
@@ -88,25 +73,15 @@ func setConfigSource() {
 	viper.SetConfigName(".his")
 }
 
-func getDefaultFindFilePattern() (string, error) {
-	pattern := getGlobPatternSetting()
-	return expandTilde(pattern)
-}
-
-func getGlobPatternSetting() string {
-	if pattern := viper.GetString("pattern"); pattern != "" {
-		return pattern
-	}
-	return "~/*.md"
-}
-
-func expandTilde(path string) (string, error) {
-	if path != "~" && !strings.HasPrefix(path, "~/") {
-		return path, nil
-	}
-	home, err := os.UserHomeDir()
+func runPick() error {
+	logs, err := config.Logs()
 	if err != nil {
-		return "", err
+		return err
 	}
-	return filepath.Join(home, path[1:]), nil
+	return pick.Run(logs, isTerminal(os.Stdout), os.Stdout)
+}
+
+func isTerminal(f *os.File) bool {
+	info, err := f.Stat()
+	return err == nil && info.Mode()&os.ModeCharDevice != 0
 }

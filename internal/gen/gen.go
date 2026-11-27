@@ -5,12 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/tro3373/his/internal/monthlog"
 )
 
 // Config is the "gen" section of the his config file.
@@ -49,7 +50,7 @@ func DefaultConfig() Config {
 // one config dir may hold sessions of several logs.
 type LogConfig struct {
 	Name  string   `mapstructure:"name"`
-	Dir   string   `mapstructure:"dir"`   // <Dir>/<YYYY>/<YYYY-MM-DD>-log.md
+	Dir   string   `mapstructure:"dir"`
 	Roots []string `mapstructure:"roots"` // working directories under these belong to this log
 	Apps  []string `mapstructure:"apps"`  // rec apps whose calls belong to this log
 	// Default takes the sessions under no log's roots, and the tasks whose
@@ -69,9 +70,7 @@ func (c Config) Validate() error {
 	if c.Lunch.End <= c.Lunch.Start {
 		errs = append(errs, errors.New("gen.lunch needs a start before its end"))
 	}
-	if len(c.Logs) == 0 {
-		errs = append(errs, errors.New("gen.logs is empty"))
-	}
+	errs = append(errs, ValidateLogs(c.Logs))
 	if c.Lag < 0 {
 		errs = append(errs, errors.New("gen.lag is negative"))
 	}
@@ -90,8 +89,17 @@ func (c Config) Validate() error {
 	if c.Activity.RetentionDays < c.CatchUpDays {
 		errs = append(errs, fmt.Errorf("gen.activity.retention_days (%d) is shorter than gen.catch_up_days (%d)", c.Activity.RetentionDays, c.CatchUpDays))
 	}
+	return errors.Join(errs...)
+}
+
+// ValidateLogs reports the gen.logs errors that would make a run read or write the wrong place.
+func ValidateLogs(logs []LogConfig) error {
+	var errs []error
+	if len(logs) == 0 {
+		errs = append(errs, errors.New("gen.logs is empty"))
+	}
 	defaults := 0
-	for _, l := range c.Logs {
+	for _, l := range logs {
 		if l.Dir == "" {
 			errs = append(errs, fmt.Errorf("gen.logs %q has no dir", l.Name))
 		}
@@ -400,22 +408,17 @@ func writeDay(path, content string, date time.Time, block []string, links []Link
 }
 
 // monthFile returns the log of the date's month and its content.
-// The month's log is the one named <YYYY-MM>-*-log.md, whatever its day: the
-// first business day names it. When there is none, it is named after date and
-// starts with the previous log's head.
 func monthFile(dir string, date time.Time) (string, string, error) {
-	year := filepath.Join(dir, date.Format("2006"))
-	found, err := filepath.Glob(filepath.Join(year, date.Format("2006-01")+"-??-log.md"))
+	found, ok, err := monthlog.Find(dir, date)
 	if err != nil {
 		return "", "", err
 	}
-	if len(found) > 0 {
-		slices.Sort(found)
-		data, err := os.ReadFile(found[0])
-		return found[0], string(data), err
+	if ok {
+		data, err := os.ReadFile(found)
+		return found, string(data), err
 	}
-	path := filepath.Join(year, date.Format("2006-01-02")+"-log.md")
-	prev, err := previousLog(dir, filepath.Base(path))
+	path := monthlog.PathFor(dir, date)
+	prev, err := monthlog.Before(dir, date)
 	if err != nil {
 		return "", "", err
 	}
@@ -427,19 +430,4 @@ func monthFile(dir string, date time.Time) (string, string, error) {
 		return "", "", err
 	}
 	return path, NewMonthContent(string(data)), nil
-}
-
-func previousLog(dir, name string) (string, error) {
-	all, err := filepath.Glob(filepath.Join(dir, "*", "*-log.md"))
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return "", err
-	}
-	prev := ""
-	for _, p := range all {
-		b := filepath.Base(p)
-		if b < name && b > filepath.Base(prev) {
-			prev = p
-		}
-	}
-	return prev, nil
 }
