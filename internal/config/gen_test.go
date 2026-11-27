@@ -1,4 +1,4 @@
-package cmd
+package config
 
 import (
 	"os"
@@ -12,7 +12,7 @@ import (
 	"github.com/tro3373/his/internal/gen"
 )
 
-func TestLoadGenConfig(t *testing.T) {
+func TestGen(t *testing.T) {
 	tests := []struct {
 		name      string
 		overrides map[string]any
@@ -62,9 +62,9 @@ func TestLoadGenConfig(t *testing.T) {
 			}
 			viper.Set("gen", section)
 
-			got, err := loadGenConfig()
+			got, err := Gen()
 			if (err != nil) != tt.wantErr {
-				t.Fatalf("loadGenConfig() error = %v, wantErr %v", err, tt.wantErr)
+				t.Fatalf("Gen() error = %v, wantErr %v", err, tt.wantErr)
 			}
 			if tt.wantErr {
 				return
@@ -88,13 +88,13 @@ func TestLoadGenConfig(t *testing.T) {
 			}
 			want := gen.Config{Lag: tt.wantLag, CatchUpDays: tt.wantDays, MinIdle: tt.wantIdle}
 			if got.Lag != want.Lag || got.CatchUpDays != want.CatchUpDays || got.MinIdle != want.MinIdle {
-				t.Errorf("loadGenConfig() = %+v, want %+v", got, want)
+				t.Errorf("Gen() = %+v, want %+v", got, want)
 			}
 		})
 	}
 }
 
-func TestLoadActivityConfig_yaml(t *testing.T) {
+func TestActivity_yaml(t *testing.T) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		t.Fatal(err)
@@ -120,12 +120,12 @@ func TestLoadActivityConfig_yaml(t *testing.T) {
 			if err := viper.ReadConfig(strings.NewReader(tt.yaml)); err != nil {
 				t.Fatal(err)
 			}
-			got, err := loadActivityConfig()
+			got, err := Activity()
 			if err != nil {
 				t.Fatal(err)
 			}
 			if got.Dir != tt.wantDir || !slices.Equal(got.Ignore, tt.want) {
-				t.Errorf("loadActivityConfig() = %+v, want dir %q ignore %v", got, tt.wantDir, tt.want)
+				t.Errorf("Activity() = %+v, want dir %q ignore %v", got, tt.wantDir, tt.want)
 			}
 		})
 	}

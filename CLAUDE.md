@@ -74,7 +74,7 @@ make tag arg="--count 10 --tag DEV"
 
 ### Packages
 
-- `cmd/` - Cobra commands (`root`, `latest`, `tag`, `gen`): args, config, output
+- `cmd/` - Cobra commands (`root`, `latest`, `tag`, `gen`): args, wiring, output
 - `internal/timelog/` - The time heading format (`### 20261030_130000 ALPHA 1h Title`).
   `Parse` and `Heading.String` are the only code that reads or writes it;
   `gen` writes through it and `summary` reads through it
@@ -84,6 +84,8 @@ make tag arg="--count 10 --tag DEV"
   - `NewResult()`: Aggregates logs into `TagSummaryLog` and `TagTitleSummaryLog`
 - `internal/activity/` - The Activity log on disk (`<dir>/YYYYMMDD.tsv`, one `epoch\tcwd\tbranch` line per entry).
   `Append`, `Read` and `Prune` are the only code that reads or writes it
+- `internal/config/` - Reads `~/.his` through the global viper instance that `cmd/root.go` sets up:
+  `Gen`, `Activity` (only `gen.activity`, never validated) and `Pattern`. Expands `~`
 - `internal/monthlog/` - The month log layout on disk (`<dir>/<YYYY>/<YYYY-MM-DD>-log.md`).
   `Find`, `PathFor` and `List` are the only code that knows it
 - `internal/gen/` - Writes the daily headings from Claude Code sessions, rec's calls and tasks

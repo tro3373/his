@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"path/filepath"
-	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -86,27 +84,4 @@ func setConfigSource() {
 	viper.AddConfigPath(home)
 	viper.SetConfigType("yaml")
 	viper.SetConfigName(".his")
-}
-
-func getDefaultFindFilePattern() (string, error) {
-	pattern := getGlobPatternSetting()
-	return expandTilde(pattern)
-}
-
-func getGlobPatternSetting() string {
-	if pattern := viper.GetString("pattern"); pattern != "" {
-		return pattern
-	}
-	return "~/*.md"
-}
-
-func expandTilde(path string) (string, error) {
-	if path != "~" && !strings.HasPrefix(path, "~/") {
-		return path, nil
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(home, path[1:]), nil
 }

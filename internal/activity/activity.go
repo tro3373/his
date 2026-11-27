@@ -138,3 +138,16 @@ func parseLine(line string, loc *time.Location) (Entry, bool) {
 func midnight(t time.Time) time.Time {
 	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
 }
+
+// PhysicalPath resolves symlinks in dir, or returns dir unchanged when it cannot.
+// Claude Code records physical paths: a logical one would split a repository into two tags.
+func PhysicalPath(dir string) string {
+	if dir == "" {
+		return dir
+	}
+	resolved, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return dir
+	}
+	return resolved
+}

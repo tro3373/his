@@ -4,6 +4,7 @@ import (
 	"log"
 
 	"github.com/spf13/cobra"
+	"github.com/tro3373/his/internal/config"
 	"github.com/tro3373/his/internal/summary"
 )
 
@@ -41,7 +42,7 @@ func init() {
 func latest(args []string) error {
 	tag, outputCount := parseTagArgs(args, 1)
 
-	pattern, err := getDefaultFindFilePattern()
+	pattern, err := config.Pattern()
 	if err != nil {
 		return err
 	}
