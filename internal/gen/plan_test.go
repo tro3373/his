@@ -133,6 +133,27 @@ func TestPlanDay(t *testing.T) {
 			ok: true,
 		},
 		{
+			name:  "昼休み中の実行で_昼前の1時間に活動があれば昼休みの始まりで終えること",
+			limit: at(12, 10),
+			acts:  []Activity{act("ALPHA", 10, 10), act("ALPHA", 11, 20)},
+			want:  Day{Segments: []Segment{{Start: at(10, 0), Kind: KindWork, Hours: []TagHours{{"ALPHA", 8}}}}, End: at(12, 0)},
+			ok:    true,
+		},
+		{
+			name:  "昼休み中の実行でも_昼前の1時間に活動が無ければ最後の活動の時で終えること",
+			limit: at(12, 10),
+			acts:  []Activity{act("ALPHA", 9, 10), act("ALPHA", 10, 20)},
+			want:  Day{Segments: []Segment{{Start: at(9, 0), Kind: KindWork, Hours: []TagHours{{"ALPHA", 4}}}}, End: at(10, 0)},
+			ok:    true,
+		},
+		{
+			name:  "昼休みの後の実行で昼前に終えた日は_最後の活動の時で終えること",
+			limit: at(15, 0),
+			acts:  []Activity{act("ALPHA", 10, 10), act("ALPHA", 11, 20)},
+			want:  Day{Segments: []Segment{{Start: at(10, 0), Kind: KindWork, Hours: []TagHours{{"ALPHA", 4}}}}, End: at(11, 0)},
+			ok:    true,
+		},
+		{
 			name: "活動が 1 時間に満たない日は 1 時間にすること",
 			acts: []Activity{act("ALPHA", 21, 10), act("ALPHA", 21, 40)},
 			want: Day{

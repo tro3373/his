@@ -124,11 +124,11 @@ const meetingTagWindow = 30 * time.Minute
 // A day is only added to: what follows its latest time heading is appended.
 // A zero target writes each log from yesterday, or from an older newest written day, through today.
 // Any other target is that day only.
-// Every day ends no later than cfg.Lag before now.
+// Every day ends no later than cfg.Lag before now, or the start of lunch when now is during lunch.
 func Run(cfg Config, now, target time.Time, w io.Writer) error {
 	loc := now.Location()
 	today := midnight(now)
-	rules := DayRules{Lunch: cfg.Lunch, MinIdle: cfg.MinIdle, Limit: now.Add(-cfg.Lag)}
+	rules := DayRules{Lunch: cfg.Lunch, MinIdle: cfg.MinIdle, Limit: runLimit(now, cfg.Lag, cfg.Lunch)}
 	since := today.AddDate(0, 0, -cfg.CatchUpDays)
 	if !target.IsZero() {
 		since = midnight(target)
@@ -195,6 +195,20 @@ func Run(cfg Config, now, target time.Time, w io.Writer) error {
 		}
 	}
 	return nil
+}
+
+// runLimit is where a run at now ends the day: lag before now,
+// but no earlier than the start of lunch when now is during lunch.
+// Nobody works during lunch, so the morning up to it is already over;
+// stopping lag before a run at the start of lunch would leave its last stretch to a heading of its own.
+func runLimit(now time.Time, lag time.Duration, lunch Lunch) time.Time {
+	limit := now.Add(-lag)
+	day0 := midnight(now)
+	start := day0.Add(time.Duration(lunch.Start))
+	if !within(now, start, day0.Add(time.Duration(lunch.End))) {
+		return limit
+	}
+	return maxTime(limit, start)
 }
 
 // logDates is the days a run without a date writes to the log in dir:
