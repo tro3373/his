@@ -26,6 +26,10 @@ type Config struct {
 	Lag         time.Duration `mapstructure:"lag"`           // a day ends no later than this long before now
 	CatchUpDays int           `mapstructure:"catch_up_days"` // how far back a run without a date looks
 	MinIdle     time.Duration `mapstructure:"min_idle"`      // how long a stretch without activity must last to be a break
+
+	// TempDir holds throwaway working directories (review and test runs):
+	// activity under it belongs to no log. It is not read from the config file.
+	TempDir string `mapstructure:"-"`
 }
 
 // ActivityConfig is the "gen.activity" section: where shells and nvim append
@@ -40,7 +44,7 @@ type ActivityConfig struct {
 // CatchUpDays matches Claude Code deleting session logs after 30 days (cleanupPeriodDays).
 func DefaultConfig() Config {
 	return Config{
-		Lag: 30 * time.Minute, CatchUpDays: 30, MinIdle: time.Hour,
+		Lag: 30 * time.Minute, CatchUpDays: 30, MinIdle: time.Hour, TempDir: os.TempDir(),
 		Activity: ActivityConfig{Dir: "~/.local/state/his/activity", RetentionDays: 35, Ignore: []string{"~"}},
 	}
 }
