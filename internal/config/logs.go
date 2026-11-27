@@ -8,8 +8,7 @@ import (
 	"github.com/tro3373/his/internal/gen"
 )
 
-// Logs reads only gen.logs, each Dir with "~" expanded, and does not validate the rest of gen,
-// so picking a month log works whatever else gen holds.
+// Logs reads only gen.logs, each Dir with "~" expanded, and does not validate the rest of gen.
 func Logs() ([]gen.LogConfig, error) {
 	var logs []gen.LogConfig
 	if err := viper.UnmarshalKey("gen.logs", &logs, configDecodeHook()); err != nil {

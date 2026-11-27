@@ -50,7 +50,7 @@ func DefaultConfig() Config {
 // one config dir may hold sessions of several logs.
 type LogConfig struct {
 	Name  string   `mapstructure:"name"`
-	Dir   string   `mapstructure:"dir"`   // holds the month logs, laid out by monthlog
+	Dir   string   `mapstructure:"dir"`
 	Roots []string `mapstructure:"roots"` // working directories under these belong to this log
 	Apps  []string `mapstructure:"apps"`  // rec apps whose calls belong to this log
 	// Default takes the sessions under no log's roots, and the tasks whose
@@ -401,8 +401,6 @@ func writeDay(path, content string, date time.Time, block []string, links []Link
 }
 
 // monthFile returns the log of the date's month and its content.
-// The month's log is the one the first business day named, whatever its day.
-// When there is none, it is named after date and starts with the previous log's head.
 func monthFile(dir string, date time.Time) (string, string, error) {
 	found, ok, err := monthlog.Find(dir, date)
 	if err != nil {

@@ -23,7 +23,7 @@ func touch(t *testing.T, path string) {
 func writeScript(t *testing.T, dir, name, body string) string {
 	t.Helper()
 	path := filepath.Join(dir, name)
-	if err := os.WriteFile(path, []byte("#!/bin/sh\n"+body), 0o700); err != nil { //nolint:gosec // a test script must be executable
+	if err := os.WriteFile(path, []byte("#!/bin/sh\n"+body), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	return path
@@ -32,9 +32,9 @@ func writeScript(t *testing.T, dir, name, body string) string {
 func TestCandidates(t *testing.T) {
 	tests := []struct {
 		name  string
-		files map[string][]string // log name => files under its dir
-		order []string            // log names in gen.logs order
-		want  []string            // "log rel"
+		files map[string][]string
+		order []string
+		want  []string
 	}{
 		{
 			name:  "複数のlogの場合_新しい月から並ぶこと",

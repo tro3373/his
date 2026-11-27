@@ -130,3 +130,24 @@ func TestActivity_yaml(t *testing.T) {
 		})
 	}
 }
+
+func TestActivity_symlinkedIgnore(t *testing.T) {
+	real, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	viper.Set("gen.activity.ignore", []string{link})
+	got, err := Activity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(got.Ignore, []string{real}) {
+		t.Errorf("Activity().Ignore = %v, want the physical path %v, as his act records the working directory", got.Ignore, []string{real})
+	}
+}

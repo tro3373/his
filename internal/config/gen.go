@@ -19,7 +19,6 @@ func configDecodeHook() viper.DecoderConfigOption {
 	))
 }
 
-// dropIgnoreDefault empties the default ignore list when the config sets the key.
 // mapstructure decodes into an existing non-nil slice element by element,
 // so a configured list shorter than the default would keep the default's tail.
 func dropIgnoreDefault(a *gen.ActivityConfig) {
@@ -28,9 +27,6 @@ func dropIgnoreDefault(a *gen.ActivityConfig) {
 	}
 }
 
-// expandActivity expands "~" in the directory and every ignored directory.
-// Ignored directories are resolved like the working directories "his act" records,
-// or a symlinked home would never match.
 func expandActivity(a *gen.ActivityConfig) error {
 	dir, err := ExpandTilde(a.Dir)
 	if err != nil {
@@ -47,8 +43,7 @@ func expandActivity(a *gen.ActivityConfig) error {
 	return nil
 }
 
-// Activity reads only gen.activity over its defaults and does not validate,
-// so a shell hook records activity whatever the rest of gen holds.
+// Activity reads only gen.activity over its defaults and does not validate the rest of gen.
 func Activity() (gen.ActivityConfig, error) {
 	cfg := gen.DefaultConfig().Activity
 	dropIgnoreDefault(&cfg)

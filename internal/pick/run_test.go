@@ -14,7 +14,7 @@ func TestRun(t *testing.T) {
 	tests := []struct {
 		name        string
 		interactive bool
-		fzfOut      string // "{path}" stands for the newest month log's path
+		fzfOut      string
 		fzfCode     string
 		wantList    string
 		wantEdited  bool

@@ -11,8 +11,8 @@ import (
 func TestEdit(t *testing.T) {
 	tests := []struct {
 		name     string
-		editor   string // "{bin}" stands for the fake editor
-		onPath   string // a fake editor named so is put on PATH
+		editor   string
+		onPath   string
 		paths    []string
 		wantArgs []string
 		wantRun  bool
