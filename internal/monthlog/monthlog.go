@@ -1,5 +1,5 @@
 // Package monthlog is the only code that knows where month logs lie:
-// <dir>/<YYYY>/<YYYY-MM-DD>-log.md, named after the first day of the month the file holds.
+// <dir>/<YYYY>/<YYYY-MM-DD>-log.md, named after the first day the file holds, not always the first of the month.
 package monthlog
 
 import (
@@ -32,7 +32,7 @@ func Find(dir string, month time.Time) (string, bool, error) {
 	return found[0], true, nil
 }
 
-// Before is the newest month log under dir named before date's day, or "" when there is none.
+// Before is the newest month log under dir that holds a month before date's, or "" when there is none.
 func Before(dir string, date time.Time) (string, error) {
 	all, err := List(dir)
 	if err != nil {
@@ -55,9 +55,13 @@ func List(dir string) ([]string, error) {
 }
 
 // Compare orders month logs by the month they hold, oldest first, whichever dir they lie under.
-// Month logs of the same file name compare equal.
+// Month logs of the same month compare equal, whatever day names them.
 func Compare(a, b string) int {
-	return cmp.Compare(filepath.Base(a), filepath.Base(b))
+	return cmp.Compare(month(a), month(b))
+}
+
+func month(path string) string {
+	return filepath.Base(path)[:len(monthLayout)]
 }
 
 func glob(pattern string) ([]string, error) {

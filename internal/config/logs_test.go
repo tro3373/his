@@ -24,6 +24,7 @@ func TestLogs(t *testing.T) {
 		},
 		{name: "logsが空の場合_エラーになること", yaml: "gen:\n  lag: 1h\n", wantErr: "gen.logs is empty"},
 		{name: "dirが無い場合_エラーになること", yaml: "gen:\n  logs:\n    - name: job\n", wantErr: `gen.logs "job" has no dir`},
+		{name: "defaultが2つある場合_エラーになること", yaml: "gen:\n  logs:\n    - {name: job, dir: /j, default: true}\n    - {name: prv, dir: /p, default: true}\n", wantErr: "more than one gen.logs is default"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

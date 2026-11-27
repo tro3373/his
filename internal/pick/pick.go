@@ -21,7 +21,7 @@ type Candidate struct {
 }
 
 // Candidates is every month log of every log, the newest month first.
-// Month logs of the same name keep the order of logs.
+// Month logs of the same month keep the order of logs, and within a log the newest name first.
 func Candidates(logs []gen.LogConfig) ([]Candidate, error) {
 	var all []Candidate
 	for _, l := range logs {
@@ -29,6 +29,7 @@ func Candidates(logs []gen.LogConfig) ([]Candidate, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to list the month logs of %s: %w", l.Name, err)
 		}
+		slices.Reverse(paths)
 		for _, p := range paths {
 			rel, err := filepath.Rel(l.Dir, p)
 			if err != nil {

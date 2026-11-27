@@ -131,7 +131,7 @@ func TestBefore(t *testing.T) {
 	}{
 		{name: "前の月のログがある場合_最も新しいものを返すこと", files: []string{"2026/2026-09-01-log.md", "2026/2026-10-01-log.md"}, date: date(2026, time.November, 2), want: "2026/2026-10-01-log.md"},
 		{name: "年をまたぐ場合_前の年のログを返すこと", files: []string{"2025/2025-12-01-log.md"}, date: date(2026, time.January, 5), want: "2025/2025-12-01-log.md"},
-		{name: "同じ名前と後のログだけの場合_見つからないこと", files: []string{"2026/2026-11-02-log.md", "2026/2026-12-01-log.md"}, date: date(2026, time.November, 2)},
+		{name: "同じ月と後の月のログだけの場合_見つからないこと", files: []string{"2026/2026-11-01-log.md", "2026/2026-12-01-log.md"}, date: date(2026, time.November, 2)},
 		{name: "ログが無い場合_見つからないこと", date: date(2026, time.November, 2)},
 	}
 	for _, tt := range tests {
@@ -160,7 +160,7 @@ func TestCompare(t *testing.T) {
 		want int
 	}{
 		{name: "別のdirでも_月の古い方が先になること", a: "/prv/2026/2026-10-01-log.md", b: "/job/2026/2026-11-02-log.md", want: -1},
-		{name: "同じファイル名の場合_等しいこと", a: "/prv/2026/2026-11-02-log.md", b: "/job/2026/2026-11-02-log.md", want: 0},
+		{name: "同じ月で日が違う場合_等しいこと", a: "/prv/2026/2026-11-12-log.md", b: "/job/2026/2026-11-02-log.md", want: 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

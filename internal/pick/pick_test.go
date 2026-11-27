@@ -40,13 +40,19 @@ func TestCandidates(t *testing.T) {
 			name:  "複数のlogの場合_新しい月から並ぶこと",
 			files: map[string][]string{"job": {"2026/2026-10-01-log.md", "2026/2026-11-02-log.md"}, "prv": {"2026/2026-10-05-log.md"}},
 			order: []string{"job", "prv"},
-			want:  []string{"job 2026/2026-11-02-log.md", "prv 2026/2026-10-05-log.md", "job 2026/2026-10-01-log.md"},
+			want:  []string{"job 2026/2026-11-02-log.md", "job 2026/2026-10-01-log.md", "prv 2026/2026-10-05-log.md"},
 		},
 		{
-			name:  "ファイル名が同じ場合_gen.logsの順になること",
-			files: map[string][]string{"job": {"2026/2026-11-02-log.md"}, "prv": {"2026/2026-11-02-log.md"}},
+			name:  "同じ月で日が違う場合_gen.logsの順になること",
+			files: map[string][]string{"job": {"2026/2026-11-12-log.md"}, "prv": {"2026/2026-11-02-log.md"}},
 			order: []string{"prv", "job"},
-			want:  []string{"prv 2026/2026-11-02-log.md", "job 2026/2026-11-02-log.md"},
+			want:  []string{"prv 2026/2026-11-02-log.md", "job 2026/2026-11-12-log.md"},
+		},
+		{
+			name:  "1つのlogで同じ月に複数ある場合_名前の新しい方が先になること",
+			files: map[string][]string{"job": {"2025/2025-01-06-log.md", "2025/2025-01-07-log.md"}, "prv": {"2025/2025-01-01-log.md"}},
+			order: []string{"job", "prv"},
+			want:  []string{"job 2025/2025-01-07-log.md", "job 2025/2025-01-06-log.md", "prv 2025/2025-01-01-log.md"},
 		},
 		{
 			name:  "年をまたぐ場合_年が新しい方が先になること",
