@@ -162,7 +162,7 @@ func TestParseTask(t *testing.T) {
 			content: "---\ntitle: x\nbranch: feature/console\nstatus: ✅️🚀\n---\n\n- [x] a\n",
 			want: Task{
 				Path: "tasks/backend/20261030-144224_console-文言修正/index.md", Title: "20261030-144224_console-文言修正",
-				Repo: "backend", Branch: "feature/console", Status: taskDone,
+				Repos: []string{"backend"}, Branch: "feature/console", Status: taskDone,
 				Created: time.Date(2026, 10, 30, 14, 42, 24, 0, jst),
 			},
 			ok: true,
@@ -173,7 +173,7 @@ func TestParseTask(t *testing.T) {
 			content: "---\nbranch: feature/x\nstatus:\n---\n",
 			want: Task{
 				Path: "tasks/backend/20261030-144224_x/index.md", Title: "20261030-144224_x",
-				Repo: "backend", Branch: "feature/x", Created: time.Date(2026, 10, 30, 14, 42, 24, 0, jst),
+				Repos: []string{"backend"}, Branch: "feature/x", Created: time.Date(2026, 10, 30, 14, 42, 24, 0, jst),
 			},
 			ok: true,
 		},
@@ -183,7 +183,7 @@ func TestParseTask(t *testing.T) {
 			content: "---\nid: 20261030-144224\nstatus: done\nbranch: feature/x\n---\n",
 			want: Task{
 				Path: "tasks/backend/20261030-144224_x/task.md", Title: "20261030-144224_x",
-				Repo: "backend", Branch: "feature/x", Status: taskDone, Created: time.Date(2026, 10, 30, 14, 42, 24, 0, jst),
+				Repos: []string{"backend"}, Branch: "feature/x", Status: taskDone, Created: time.Date(2026, 10, 30, 14, 42, 24, 0, jst),
 			},
 			ok: true,
 		},
@@ -193,7 +193,7 @@ func TestParseTask(t *testing.T) {
 			content: "---\nstatus: doing\nbranch: feature/x\n---\n",
 			want: Task{
 				Path: "tasks/backend/20261030-144224_x/task.md", Title: "20261030-144224_x",
-				Repo: "backend", Branch: "feature/x", Created: time.Date(2026, 10, 30, 14, 42, 24, 0, jst),
+				Repos: []string{"backend"}, Branch: "feature/x", Created: time.Date(2026, 10, 30, 14, 42, 24, 0, jst),
 			},
 			ok: true,
 		},
@@ -203,7 +203,7 @@ func TestParseTask(t *testing.T) {
 			content: "---\nstatus: done\nbranch: main\nended: 2026-10-30T18:00:00+09:00\n---\n",
 			want: Task{
 				Path: "tasks/backend/20261030-144224_x/task.md", Title: "20261030-144224_x",
-				Repo: "backend", Branch: "main", Status: taskDone, Created: time.Date(2026, 10, 30, 14, 42, 24, 0, jst),
+				Repos: []string{"backend"}, Branch: "main", Status: taskDone, Created: time.Date(2026, 10, 30, 14, 42, 24, 0, jst),
 				Ended: time.Date(2026, 10, 30, 18, 0, 0, 0, jst),
 			},
 			ok: true,
@@ -214,7 +214,7 @@ func TestParseTask(t *testing.T) {
 			content: "---\nstatus: todo\nbranch: feature/x\n---\n",
 			want: Task{
 				Path: "tasks/backend/20261030-144224_x/task.md", Title: "20261030-144224_x",
-				Repo: "backend", Branch: "feature/x", Status: taskNotStarted, Created: time.Date(2026, 10, 30, 14, 42, 24, 0, jst),
+				Repos: []string{"backend"}, Branch: "feature/x", Status: taskNotStarted, Created: time.Date(2026, 10, 30, 14, 42, 24, 0, jst),
 			},
 			ok: true,
 		},
@@ -224,7 +224,7 @@ func TestParseTask(t *testing.T) {
 			content: "---\nstatus: ready\nbranch: feature/x\nstarted: 2026-10-30T15:00:00+09:00\n---\n",
 			want: Task{
 				Path: "tasks/backend/20261030-144224_x/task.md", Title: "20261030-144224_x",
-				Repo: "backend", Branch: "feature/x", Status: taskNotStarted, Created: time.Date(2026, 10, 30, 14, 42, 24, 0, jst),
+				Repos: []string{"backend"}, Branch: "feature/x", Status: taskNotStarted, Created: time.Date(2026, 10, 30, 14, 42, 24, 0, jst),
 				Started: time.Date(2026, 10, 30, 15, 0, 0, 0, jst),
 			},
 			ok: true,
@@ -273,11 +273,37 @@ func TestReadTasks(t *testing.T) {
 	}
 }
 
+func TestReadTasks_symlinkedRepository(t *testing.T) {
+	root := t.TempDir()
+	rel := filepath.Join("tasks", "real", "20261030-144224_x", "task.md")
+	write(t, filepath.Join(root, rel), "---\nbranch: feature/x\n---\n")
+	if err := os.Symlink("real", filepath.Join(root, "tasks", "alias")); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := ReadTasks(root, jst)
+	if err != nil {
+		t.Fatalf("ReadTasks() error = %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("ReadTasks() = %+v, want one task", got)
+	}
+	if got[0].Path != rel {
+		t.Errorf("Path = %s, want %s", got[0].Path, rel)
+	}
+	if want := []string{"alias", "real"}; !slices.Equal(got[0].Repos, want) {
+		t.Errorf("Repos = %v, want %v", got[0].Repos, want)
+	}
+	if want := []string{filepath.Join("tasks", "alias", "20261030-144224_x", "task.md"), rel}; !slices.Equal(got[0].Vias, want) {
+		t.Errorf("Vias = %v, want %v", got[0].Vias, want)
+	}
+}
+
 func TestTaskWorkedIn(t *testing.T) {
 	created := time.Date(2026, 11, 9, 10, 0, 0, 0, jst)
 	ended := time.Date(2026, 11, 9, 18, 0, 0, 0, jst)
-	open := Task{Repo: "r", Branch: "main", Created: created}
-	closed := Task{Repo: "r", Branch: "main", Created: created, Ended: ended}
+	open := Task{Repos: []string{"r"}, Branch: "main", Created: created}
+	closed := Task{Repos: []string{"r"}, Branch: "main", Created: created, Ended: ended}
 	tests := []struct {
 		name string
 		task Task
@@ -291,9 +317,9 @@ func TestTaskWorkedIn(t *testing.T) {
 		{name: "終了していなければ後の日の Activity も作業と数えること", task: open, act: Activity{At: ended.AddDate(0, 0, 3), Repo: "r", Branch: "main"}, want: true},
 		{name: "別の branch の Activity は作業と数えないこと", task: closed, act: Activity{At: created, Repo: "r", Branch: "x"}},
 		{name: "別の repo の Activity は作業と数えないこと", task: closed, act: Activity{At: created, Repo: "z", Branch: "main"}},
-		{name: "started より前の Activity は作業と数えないこと", task: Task{Repo: "r", Branch: "main", Created: created, Started: ended}, act: Activity{At: created, Repo: "r", Branch: "main"}},
-		{name: "started の Activity は作業と数えること", task: Task{Repo: "r", Branch: "main", Created: created, Started: ended}, act: Activity{At: ended, Repo: "r", Branch: "main"}, want: true},
-		{name: "branch の無いタスクは作業と数えないこと", task: Task{Repo: "r", Created: created}, act: Activity{At: created, Repo: "r"}},
+		{name: "started より前の Activity は作業と数えないこと", task: Task{Repos: []string{"r"}, Branch: "main", Created: created, Started: ended}, act: Activity{At: created, Repo: "r", Branch: "main"}},
+		{name: "started の Activity は作業と数えること", task: Task{Repos: []string{"r"}, Branch: "main", Created: created, Started: ended}, act: Activity{At: ended, Repo: "r", Branch: "main"}, want: true},
+		{name: "branch の無いタスクは作業と数えないこと", task: Task{Repos: []string{"r"}, Created: created}, act: Activity{At: created, Repo: "r"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -319,33 +345,33 @@ func TestLinksOfTaskWindow(t *testing.T) {
 	}{
 		{
 			name: "終了後の日の Activity だけならタスクを載せないこと",
-			task: Task{Repo: "r", Branch: "main", Created: d.AddDate(0, 0, -2), Ended: d.AddDate(0, 0, -1)},
+			task: Task{Repos: []string{"r"}, Branch: "main", Created: d.AddDate(0, 0, -2), Ended: d.AddDate(0, 0, -1)},
 			acts: []Activity{act(10)},
 		},
 		{
 			name: "作成前の日の Activity だけならタスクを載せないこと",
-			task: Task{Repo: "r", Branch: "main", Created: d.AddDate(0, 0, 1)},
+			task: Task{Repos: []string{"r"}, Branch: "main", Created: d.AddDate(0, 0, 1)},
 			acts: []Activity{act(10)},
 		},
 		{
 			name: "終了後の Activity が多くても終了前の区間に置くこと",
-			task: Task{Repo: "r", Branch: "main", Created: d, Ended: d.Add(12 * time.Hour)},
+			task: Task{Repos: []string{"r"}, Branch: "main", Created: d, Ended: d.Add(12 * time.Hour)},
 			acts: []Activity{act(10), act(14), act(15)},
 			want: []int{0},
 		},
 		{
 			name: "着手前のタスクは作成日でも載せないこと",
-			task: Task{Repo: "r", Branch: "feature/x", Created: d.Add(10 * time.Hour), Status: taskNotStarted},
+			task: Task{Repos: []string{"r"}, Branch: "feature/x", Created: d.Add(10 * time.Hour), Status: taskNotStarted},
 			own:  true,
 		},
 		{
 			name: "着手前のタスクは branch の Activity があっても載せないこと",
-			task: Task{Repo: "r", Branch: "main", Created: d, Status: taskNotStarted},
+			task: Task{Repos: []string{"r"}, Branch: "main", Created: d, Status: taskNotStarted},
 			acts: []Activity{act(10)},
 		},
 		{
 			name: "着手済みのタスクは作成日に載せること",
-			task: Task{Repo: "r", Branch: "feature/x", Created: d.Add(10 * time.Hour)},
+			task: Task{Repos: []string{"r"}, Branch: "feature/x", Created: d.Add(10 * time.Hour)},
 			own:  true,
 			want: []int{0},
 		},

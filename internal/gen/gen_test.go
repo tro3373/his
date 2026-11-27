@@ -6,9 +6,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/tro3373/his/internal/activity"
 )
 
 // TestRun drives two logs end to end: sessions, recordings and tasks in, the
@@ -114,6 +117,14 @@ func TestRun(t *testing.T) {
 	}
 }
 
+func TestDefaultConfig_tempDirs(t *testing.T) {
+	t.Setenv("TMPDIR", "/tmp/nix-shell.test")
+	got := DefaultConfig().TempDirs
+	if want := []string{activity.PhysicalPath("/tmp"), "/tmp/nix-shell.test"}; !slices.Equal(got, want) {
+		t.Errorf("TempDirs = %v, want %v", got, want)
+	}
+}
+
 func TestRun_target(t *testing.T) {
 	now := time.Date(2026, 11, 2, 15, 0, 0, 0, jst)
 	yesterday := "### 20261101_100000 notes 1h"
@@ -130,18 +141,21 @@ func TestRun_target(t *testing.T) {
 	lateMorning := time.Date(2026, 11, 2, 11, 50, 0, 0, jst)
 	dayStamps := []string{"2026-10-31T01:20:00Z", "2026-11-02T00:10:00Z", "2026-11-02T01:10:00Z", "2026-11-02T02:20:00Z"}
 	tests := []struct {
-		name     string
-		target   time.Time
-		logs     map[string]string // file name under the log dir's year => content
-		now      time.Time         // zero means the run at the top of this test
-		stamps   []string          // session messages; empty means one on each of the last 3 days
-		branches []string          // the git branch of each stamp; empty means none
-		tasks    map[string]string // task directory under notes/tasks/notes => front matter body
-		lag      time.Duration
-		days     int           // zero means 30
-		idle     time.Duration // zero means an hour
-		want     []string
-		notWant  []string
+		name           string
+		target         time.Time
+		logs           map[string]string // file name under the log dir's year => content
+		now            time.Time         // zero means the run at the top of this test
+		stamps         []string          // session messages; empty means one on each of the last 3 days
+		branches       []string          // the git branch of each stamp; empty means none
+		tasks          map[string]string // task directory under notes/tasks/notes => front matter body
+		symlinkedTasks bool
+		cwdInTempDir   bool
+		lag            time.Duration
+		days           int           // zero means 30
+		idle           time.Duration // zero means an hour
+		want           []string
+		notWant        []string
+		once           []string // each appears exactly once
 	}{
 		{name: "指定も書いた日も無ければ_30日の窓を今日まで書くこと", want: []string{older, yesterday, today}},
 		{
@@ -208,6 +222,48 @@ func TestRun_target(t *testing.T) {
 			notWant: []string{today},
 		},
 		{name: "lagの分だけ前で1日が終わること", now: lateMorning, stamps: dayStamps, lag: time.Hour, want: []string{"### 20261102_104500\n"}},
+		{
+			name:    "昼休み中の実行は_lagより後でも昼休みの始まりまで書くこと",
+			now:     time.Date(2026, 11, 2, 12, 10, 0, 0, jst),
+			stamps:  dayStamps,
+			lag:     30 * time.Minute,
+			want:    []string{"### 20261102_120000\n"},
+			notWant: []string{"### 20261102_113000", "### 20261102_114500"},
+		},
+		{name: "一時ディレクトリの下の作業は書かないこと", now: lateMorning, stamps: dayStamps, cwdInTempDir: true, notWant: []string{"## 2026-11-02"}},
+		{
+			name:           "symlinkで同じタスクを指すディレクトリがあっても_リンクは1つにすること",
+			target:         time.Date(2026, 11, 1, 0, 0, 0, 0, jst),
+			stamps:         []string{"2026-11-01T00:30:00Z", "2026-11-01T01:20:00Z"},
+			branches:       []string{"feature/new", "feature/new"},
+			tasks:          map[string]string{"20261030-090000_new": "branch: feature/new\nstatus:\n"},
+			symlinkedTasks: true,
+			want:           []string{"[20261030-090000_new](tasks/notes/20261030-090000_new/index.md)\n### "},
+			notWant:        []string{"tasks/alias/"},
+			once:           []string{"20261030-090000_new/index.md"},
+		},
+		{
+			name:           "symlink越しのパスで書いたリンクも_完了したら印を更新すること",
+			target:         time.Date(2026, 11, 1, 0, 0, 0, 0, jst),
+			stamps:         []string{"2026-11-01T02:30:00Z"},
+			tasks:          map[string]string{"20261030-090000_done": "status: ✅️\n"},
+			symlinkedTasks: true,
+			logs: map[string]string{"2026-11-01-log.md": lines("# Log", "", "## 2026-11-01 (日)", "### 20261101_090000 KEPT 1h",
+				"- [ ] [20261030-090000_done](tasks/alias/20261030-090000_done/index.md)", "### 20261101_100000")},
+			want: []string{"- [x] [20261030-090000_done](tasks/alias/20261030-090000_done/index.md)"},
+		},
+		{
+			name:           "symlink越しのパスで書いたリンクがあれば_実体のパスで足し直さないこと",
+			target:         time.Date(2026, 11, 1, 0, 0, 0, 0, jst),
+			stamps:         []string{"2026-11-01T01:30:00Z", "2026-11-01T02:20:00Z"},
+			branches:       []string{"feature/new", "feature/new"},
+			tasks:          map[string]string{"20261030-090000_new": "branch: feature/new\nstatus:\n"},
+			symlinkedTasks: true,
+			logs: map[string]string{"2026-11-01-log.md": lines("# Log", "", "## 2026-11-01 (日)", "### 20261101_090000 KEPT 1h",
+				"- [ ] [20261030-090000_new](tasks/alias/20261030-090000_new/index.md)", "### 20261101_100000")},
+			want:    []string{"(tasks/alias/20261030-090000_new/index.md)"},
+			notWant: []string{"(tasks/notes/20261030-090000_new/index.md)"},
+		},
 		{name: "catch_up_daysより前の日を書かないこと", now: lateMorning, stamps: dayStamps, days: 1, notWant: []string{"2026-10-31"}},
 		{name: "catch_up_days以内の日を書くこと", now: lateMorning, stamps: dayStamps, days: 2, want: []string{"2026-10-31"}},
 		{name: "min_idle以上の空白を休憩にすること", now: lateMorning, stamps: dayStamps, idle: 30 * time.Minute, want: []string{"### 20261102_093000\n"}},
@@ -231,6 +287,12 @@ func TestRun_target(t *testing.T) {
 			for name, front := range tt.tasks {
 				write(t, filepath.Join(root, "notes/tasks/notes", name, "index.md"), "---\n"+front+"---\n")
 			}
+			if tt.symlinkedTasks {
+				session.WriteString(`{"type":"user","timestamp":"2026-11-01T01:40:00Z","cwd":"` + filepath.Join(root, "alias") + `","gitBranch":"feature/new"}` + "\n")
+				if err := os.Symlink("notes", filepath.Join(root, "notes/tasks/alias")); err != nil {
+					t.Fatal(err)
+				}
+			}
 			write(t, filepath.Join(root, "work/projects/p/s.jsonl"), session.String())
 			for name, content := range tt.logs {
 				write(t, filepath.Join(root, "notes/work/2026", name), content)
@@ -243,6 +305,9 @@ func TestRun_target(t *testing.T) {
 				MinIdle:     cmp.Or(tt.idle, time.Hour),
 				CatchUpDays: cmp.Or(tt.days, 30),
 				Logs:        []LogConfig{{Name: "work", Dir: filepath.Join(root, "notes/work"), Default: true}},
+			}
+			if tt.cwdInTempDir {
+				cfg.TempDirs = []string{root}
 			}
 			if err := Run(cfg, cmp.Or(tt.now, now), tt.target, io.Discard); err != nil {
 				t.Fatal(err)
@@ -267,6 +332,11 @@ func TestRun_target(t *testing.T) {
 			for _, w := range tt.want {
 				if !strings.Contains(got, w) {
 					t.Errorf("%q is missing in\n%s", w, got)
+				}
+			}
+			for _, w := range tt.once {
+				if n := strings.Count(got, w); n != 1 {
+					t.Errorf("%q appears %d times in\n%s", w, n, got)
 				}
 			}
 			for _, w := range tt.notWant {

@@ -12,7 +12,8 @@ import (
 
 // Link is a task to list under a segment of the day.
 type Link struct {
-	Path    string // relative to the store root, as the log links it
+	Path    string   // relative to the store root, as the log links it
+	Vias    []string // other paths an earlier run may have linked it by
 	Title   string
 	Done    bool
 	Segment int // index into Day.Segments
@@ -27,7 +28,15 @@ func (l Link) Line() string {
 	return fmt.Sprintf("- [%s] [%s](%s)", mark, l.Title, l.Path)
 }
 
-func (l Link) target() string { return target(l.Path) }
+// indexIn is the first line of ls that links l by Path or any of Vias, or -1.
+func (l Link) indexIn(ls []string) int {
+	for _, p := range append([]string{l.Path}, l.Vias...) {
+		if i := indexContaining(ls, target(p)); i >= 0 {
+			return i
+		}
+	}
+	return -1
+}
 
 // target is how a list item links the task at path.
 func target(path string) string { return "](" + path + ")" }
@@ -215,7 +224,7 @@ func placeBlock(section, block []string, links []Link) []string {
 	rest := slices.Clone(section)
 	moved := map[string][]string{}
 	for _, k := range links {
-		i := indexContaining(rest, k.target())
+		i := k.indexIn(rest)
 		if i < 0 {
 			continue
 		}
@@ -238,7 +247,7 @@ func placeBlock(section, block []string, links []Link) []string {
 func withoutPresentLinks(block, section []string, links []Link) []string {
 	present := map[string]bool{}
 	for _, k := range links {
-		present[k.Line()] = indexContaining(section, k.target()) >= 0
+		present[k.Line()] = k.indexIn(section) >= 0
 	}
 	return slices.DeleteFunc(slices.Clone(block), func(l string) bool { return present[l] })
 }

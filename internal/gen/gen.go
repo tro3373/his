@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tro3373/his/internal/activity"
 	"github.com/tro3373/his/internal/monthlog"
 )
 
@@ -26,6 +27,9 @@ type Config struct {
 	Lag         time.Duration `mapstructure:"lag"`           // a day ends no later than this long before now
 	CatchUpDays int           `mapstructure:"catch_up_days"` // how far back a run without a date looks
 	MinIdle     time.Duration `mapstructure:"min_idle"`      // how long a stretch without activity must last to be a break
+
+	// TempDirs are the directories whose activity belongs to no log.
+	TempDirs []string `mapstructure:"-"`
 }
 
 // ActivityConfig is the "gen.activity" section: where shells and nvim append
@@ -40,7 +44,7 @@ type ActivityConfig struct {
 // CatchUpDays matches Claude Code deleting session logs after 30 days (cleanupPeriodDays).
 func DefaultConfig() Config {
 	return Config{
-		Lag: 30 * time.Minute, CatchUpDays: 30, MinIdle: time.Hour,
+		Lag: 30 * time.Minute, CatchUpDays: 30, MinIdle: time.Hour, TempDirs: tempDirs(),
 		Activity: ActivityConfig{Dir: "~/.local/state/his/activity", RetentionDays: 35, Ignore: []string{"~"}},
 	}
 }
@@ -92,6 +96,13 @@ func (c Config) Validate() error {
 	return errors.Join(errs...)
 }
 
+// tempDirs is /tmp and the temporary directory of this process, symlinks resolved:
+// a shell such as nix-shell points $TMPDIR below /tmp, and throwaway runs
+// under /tmp must still be left out when gen runs there.
+func tempDirs() []string {
+	return []string{activity.PhysicalPath("/tmp"), activity.PhysicalPath(os.TempDir())}
+}
+
 // ValidateLogs reports the gen.logs errors that would make a run read or write the wrong place.
 func ValidateLogs(logs []LogConfig) error {
 	var errs []error
@@ -120,11 +131,11 @@ const meetingTagWindow = 30 * time.Minute
 // A day is only added to: what follows its latest time heading is appended.
 // A zero target writes each log from yesterday, or from an older newest written day, through today.
 // Any other target is that day only.
-// Every day ends no later than cfg.Lag before now.
+// Every day ends no later than cfg.Lag before now, or the start of lunch when now is during lunch.
 func Run(cfg Config, now, target time.Time, w io.Writer) error {
 	loc := now.Location()
 	today := midnight(now)
-	rules := DayRules{Lunch: cfg.Lunch, MinIdle: cfg.MinIdle, Limit: now.Add(-cfg.Lag)}
+	rules := DayRules{Lunch: cfg.Lunch, MinIdle: cfg.MinIdle, Limit: runLimit(now, cfg.Lag, cfg.Lunch)}
 	since := today.AddDate(0, 0, -cfg.CatchUpDays)
 	if !target.IsZero() {
 		since = midnight(target)
@@ -154,6 +165,9 @@ func Run(cfg Config, now, target time.Time, w io.Writer) error {
 	all = append(all, shell...)
 	acts := make([][]Activity, len(cfg.Logs))
 	for _, a := range all {
+		if slices.ContainsFunc(cfg.TempDirs, func(dir string) bool { return inDir(a.Cwd, dir) }) {
+			continue
+		}
 		if i := logOf(cfg.Logs, a.Cwd); i >= 0 {
 			acts[i] = append(acts[i], a)
 		}
@@ -182,7 +196,7 @@ func Run(cfg Config, now, target time.Time, w io.Writer) error {
 			var links []Link
 			if day, ok := PlanDay(d, dayRules, dayActs, meets); ok {
 				from := maxTime(d, dayRules.From)
-				links = linksOf(tasks, day, between(dayActs, from, d.AddDate(0, 0, 1)), from, func(t Task) bool { return owner(t.Repo) == i })
+				links = linksOf(tasks, day, between(dayActs, from, d.AddDate(0, 0, 1)), from, func(t Task) bool { return owner(t.Repos) == i })
 				block = RenderDay(day, links)
 			}
 			if err := writeDay(path, content, d, block, links, done, w); err != nil {
@@ -191,6 +205,16 @@ func Run(cfg Config, now, target time.Time, w io.Writer) error {
 		}
 	}
 	return nil
+}
+
+func runLimit(now time.Time, lag time.Duration, lunch Lunch) time.Time {
+	limit := now.Add(-lag)
+	day0 := midnight(now)
+	start := day0.Add(time.Duration(lunch.Start))
+	if !within(now, start, day0.Add(time.Duration(lunch.End))) {
+		return limit
+	}
+	return maxTime(limit, start)
 }
 
 // logDates is the days a run without a date writes to the log in dir:
@@ -238,13 +262,18 @@ func dayWritten(dir string, date time.Time) (bool, error) {
 // logOf is the log whose roots hold cwd, else the default log, else -1.
 func logOf(logs []LogConfig, cwd string) int {
 	for i, l := range logs {
-		for _, root := range l.Roots {
-			if cwd == root || strings.HasPrefix(cwd, strings.TrimSuffix(root, "/")+"/") {
-				return i
-			}
+		if slices.ContainsFunc(l.Roots, func(root string) bool { return inDir(cwd, root) }) {
+			return i
 		}
 	}
 	return defaultLog(logs)
+}
+
+func inDir(path, dir string) bool {
+	if dir == "" {
+		return false
+	}
+	return path == dir || strings.HasPrefix(path, strings.TrimSuffix(dir, "/")+"/")
 }
 
 // defaultLog is the index of the default log, or -1.
@@ -267,13 +296,13 @@ func between(acts []Activity, from, to time.Time) []Activity {
 	return out
 }
 
-// taskOwners decides which log a repository's tasks go to: the first log whose
-// sessions worked in it, else the default log. -1 means no log.
-func taskOwners(logs []LogConfig, acts [][]Activity) func(repo string) int {
+// taskOwners decides which log the tasks of a repository, known by any of repos, go to:
+// the first log whose sessions worked in one of them, else the default log. -1 means no log.
+func taskOwners(logs []LogConfig, acts [][]Activity) func(repos []string) int {
 	fallback := defaultLog(logs)
-	return func(repo string) int {
+	return func(repos []string) int {
 		for i := range logs {
-			if slices.ContainsFunc(acts[i], func(a Activity) bool { return a.Repo == repo }) {
+			if slices.ContainsFunc(acts[i], func(a Activity) bool { return slices.Contains(repos, a.Repo) }) {
 				return i
 			}
 		}
@@ -317,6 +346,7 @@ func finishedPaths(tasks []Task) []string {
 	for _, t := range tasks {
 		if t.Status == taskDone {
 			out = append(out, t.Path)
+			out = append(out, t.Vias...)
 		}
 	}
 	return out
@@ -342,7 +372,7 @@ func linksOf(tasks []Task, day Day, dayActs []Activity, from time.Time, ownTask 
 	slices.SortFunc(picked, func(a, b Task) int { return cmp.Or(a.Created.Compare(b.Created), cmp.Compare(a.Path, b.Path)) })
 	links := make([]Link, 0, len(picked))
 	for _, t := range picked {
-		links = append(links, Link{Path: t.Path, Title: t.Title, Done: t.Status == taskDone, Segment: segmentOf(t, day, dayActs)})
+		links = append(links, Link{Path: t.Path, Vias: t.Vias, Title: t.Title, Done: t.Status == taskDone, Segment: segmentOf(t, day, dayActs)})
 	}
 	return links
 }

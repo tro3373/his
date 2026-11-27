@@ -94,6 +94,7 @@ type DayRules struct {
 // The day starts and ends at the first and last activity, truncated to the hour.
 // A day with activity at or past rules.Limit ends at the limit instead,
 // and no day ends after it.
+// With rules.Limit during lunch, work up to rules.MinIdle before lunch ends at lunch.
 // Lunch, meetings and idle stretches cut the day; every other stretch is shared
 // among projects by how many 10 minute bins each had activity in.
 // An idle stretch is rules.MinIdle or more, lunch aside, without activity or meeting:
@@ -133,7 +134,10 @@ func PlanDay(date time.Time, rules DayRules, acts []Activity, meets []Meeting) (
 	// Without this check a rerun would plan the hour after lunch that this run left out.
 	resumes := slices.ContainsFunc(acts, func(a Activity) bool { return within(a.At, p.lunch1, limit) }) ||
 		slices.ContainsFunc(meets, func(m Meeting) bool { return within(m.Start, p.lunch1, limit) })
-	if !resumes && end.After(p.lunch0) && !end.After(p.lunch1) && start.Before(p.lunch0) {
+	workedUpToLunch := within(limit, p.lunch0, p.lunch1) &&
+		slices.ContainsFunc(acts, func(a Activity) bool { return within(a.At, p.lunch0.Add(-p.minIdle), p.lunch0) })
+	endsInLunch := end.After(p.lunch0) && !end.After(p.lunch1)
+	if !resumes && (endsInLunch || workedUpToLunch) && start.Before(p.lunch0) {
 		end = p.lunch0
 	}
 	if !end.After(rules.From) {
